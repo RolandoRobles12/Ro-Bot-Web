@@ -10,6 +10,11 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+  // TEMPORARY: Bypass authentication for development
+  // TODO: Remove this and uncomment the auth check below once Firebase Auth is configured
+  return <>{children}</>;
+
+  /* ORIGINAL AUTH CODE - UNCOMMENT WHEN FIREBASE AUTH IS READY
   const { loading, user } = useAuth();
   const { hasRole } = useAuthStore();
 
@@ -45,4 +50,5 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   }
 
   return <>{children}</>;
+  */
 }

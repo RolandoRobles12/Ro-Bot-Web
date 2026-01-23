@@ -9,7 +9,9 @@ import { workspaceService } from '@/services/firestore';
 
 export function Header() {
   const { toggleSidebar, selectedWorkspace, setSelectedWorkspace } = useAppStore();
-  const { signOut } = useAuth();
+  // TEMPORARY: Disabled auth for development
+  // const { signOut } = useAuth();
+  const signOut = () => console.log('Sign out disabled in dev mode');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
 
