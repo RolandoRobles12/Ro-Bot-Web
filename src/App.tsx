@@ -7,10 +7,10 @@ import { Dashboard } from './pages/Dashboard';
 import { Templates } from './pages/Templates';
 import { SendMessage } from './pages/SendMessage';
 import { Workspaces } from './pages/Workspaces';
-import { useAuth } from './hooks/useAuth';
 
 function App() {
   // TEMPORARY: Disabled auth loading check for development
+  // import { useAuth } from './hooks/useAuth';
   // const { loading } = useAuth();
   // if (loading) { return loading screen }
 

@@ -1,6 +1,5 @@
 import { Menu, LogOut, Bell } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import Select from 'react-select';
 import { SlackWorkspace } from '@/types';
@@ -10,6 +9,7 @@ import { workspaceService } from '@/services/firestore';
 export function Header() {
   const { toggleSidebar, selectedWorkspace, setSelectedWorkspace } = useAppStore();
   // TEMPORARY: Disabled auth for development
+  // import { useAuth } from '@/hooks/useAuth';
   // const { signOut } = useAuth();
   const signOut = () => console.log('Sign out disabled in dev mode');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
