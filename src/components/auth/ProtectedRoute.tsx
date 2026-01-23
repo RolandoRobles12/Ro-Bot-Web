@@ -1,20 +1,21 @@
 import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/types';
-import { useAuthStore } from '@/store/authStore';
 
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredRole?: UserRole;
 }
 
-export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+export function ProtectedRoute({ children }: ProtectedRouteProps) {
   // TEMPORARY: Bypass authentication for development
   // TODO: Remove this and uncomment the auth check below once Firebase Auth is configured
   return <>{children}</>;
 
   /* ORIGINAL AUTH CODE - UNCOMMENT WHEN FIREBASE AUTH IS READY
+  import { Navigate } from 'react-router-dom';
+  import { useAuth } from '@/hooks/useAuth';
+  import { useAuthStore } from '@/store/authStore';
+
   const { loading, user } = useAuth();
   const { hasRole } = useAuthStore();
 
