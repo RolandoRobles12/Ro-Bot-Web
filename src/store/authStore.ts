@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { User as FirebaseUser } from 'firebase/auth';
 import { User, UserRole } from '@/types';
+import { Timestamp } from 'firebase/firestore';
 
 interface AuthState {
   firebaseUser: FirebaseUser | null;
@@ -15,10 +16,20 @@ interface AuthState {
   isViewer: () => boolean;
 }
 
+// TEMPORARY: Mock user for development (remove when Firebase Auth is configured)
+const MOCK_USER: User = {
+  id: 'mock-user-id',
+  email: 'dev@example.com',
+  displayName: 'Development User',
+  role: 'admin',
+  createdAt: Timestamp.now(),
+  lastLogin: Timestamp.now(),
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   firebaseUser: null,
-  user: null,
-  loading: true,
+  user: MOCK_USER, // TEMPORARY: Using mock user
+  loading: false, // TEMPORARY: Set to false to skip loading screen
   setFirebaseUser: (firebaseUser) => set({ firebaseUser }),
   setUser: (user) => set({ user }),
   setLoading: (loading) => set({ loading }),
