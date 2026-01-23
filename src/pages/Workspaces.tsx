@@ -47,23 +47,32 @@ export function Workspaces() {
 
   const onSubmitWorkspace = async (data: WorkspaceFormData) => {
     try {
-      const workspaceData = {
+      // Build workspace data, omitting empty optional fields
+      const workspaceData: any = {
         name: data.name,
         teamId: data.teamId,
         teamName: data.teamName,
-        botToken: data.botToken || undefined,
-        webhookUrl: data.webhookUrl || undefined,
-        userTokens: [],
+        userTokens: editingWorkspace?.userTokens || [],
         isActive: true,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       };
 
+      // Only add botToken if provided
+      if (data.botToken && data.botToken.trim()) {
+        workspaceData.botToken = data.botToken;
+      }
+
+      // Only add webhookUrl if provided
+      if (data.webhookUrl && data.webhookUrl.trim()) {
+        workspaceData.webhookUrl = data.webhookUrl;
+      }
+
       if (editingWorkspace) {
         await workspaceService.update(editingWorkspace.id, workspaceData);
         toast.success('Workspace updated successfully!');
       } else {
-        await workspaceService.create(workspaceData as any);
+        await workspaceService.create(workspaceData);
         toast.success('Workspace created successfully!');
       }
 
