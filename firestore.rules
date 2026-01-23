@@ -2,6 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ⚠️ TEMPORARY: Allow all access for development without authentication
+    // TODO: Remove this and restore role-based rules when Firebase Auth is enabled
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    /* ORIGINAL RULES - RESTORE WHEN FIREBASE AUTH IS ENABLED
+
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
@@ -74,5 +82,6 @@ service cloud.firestore {
       allow create: if isEditor();
       allow update, delete: if isEditor() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
+    */
   }
 }
