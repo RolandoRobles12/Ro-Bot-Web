@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isEditor() {
+      return hasRole('editor') || isAdmin();
+    }
+
+    function isViewer() {
+      return hasRole('viewer') || isEditor();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow delete: if isAdmin();
+    }
+
+    // Workspaces collection
+    match /workspaces/{workspaceId} {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
+
+    // Templates collection
+    match /templates/{templateId} {
+      allow read: if isViewer();
+      allow create: if isEditor();
+      allow update, delete: if isEditor() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    // Scheduled messages collection
+    match /scheduled_messages/{messageId} {
+      allow read: if isViewer();
+      allow create: if isEditor();
+      allow update, delete: if isEditor() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    // Message history collection
+    match /message_history/{historyId} {
+      allow read: if isViewer();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // HubSpot connections collection
+    match /hubspot_connections/{connectionId} {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
+
+    // Rules collection
+    match /rules/{ruleId} {
+      allow read: if isViewer();
+      allow create: if isEditor();
+      allow update, delete: if isEditor() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+  }
+}
