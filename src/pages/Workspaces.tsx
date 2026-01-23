@@ -6,7 +6,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { workspaceService } from '@/services/firestore';
 import { SlackWorkspace, UserToken } from '@/types';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
 import { useForm } from 'react-hook-form';

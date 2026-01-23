@@ -37,7 +37,6 @@ export function SendMessage() {
     }
   });
 
-  const contentValue = watch('content', '');
   const senderType = watch('senderType', 'bot');
 
   useEffect(() => {
@@ -112,7 +111,7 @@ export function SendMessage() {
 
       // Call Firebase Function to send message
       const sendSlackMessage = httpsCallable(functions, 'sendSlackMessage');
-      const result = await sendSlackMessage({
+      await sendSlackMessage({
         workspaceId: selectedWorkspace.id,
         content: finalContent,
         recipients: [recipient],
