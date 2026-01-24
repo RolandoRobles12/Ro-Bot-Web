@@ -32,16 +32,18 @@ interface SendMessageData {
 
 /**
  * Send a Slack message
+ * TEMPORARY: Auth check disabled for development
  */
 export const sendSlackMessage = functions.https.onCall(
   async (data: SendMessageData, context) => {
-    // Check authentication
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
-    }
+    // TEMPORARY: Disabled auth check for development
+    // TODO: Restore this when Firebase Auth is enabled
+    // if (!context.auth) {
+    //   throw new functions.https.HttpsError(
+    //     'unauthenticated',
+    //     'User must be authenticated'
+    //   );
+    // }
 
     try {
       const { workspaceId, content, blocks, recipients, sender, templateId, scheduledMessageId } = data;
@@ -128,7 +130,7 @@ export const sendSlackMessage = functions.https.onCall(
             recipients: [recipient],
             sender,
             sentAt: admin.firestore.Timestamp.now(),
-            sentBy: context.auth.uid,
+            sentBy: context.auth?.uid || 'mock-user-id', // TEMPORARY: fallback for dev
             status: 'sent',
             slackResponse: result,
           });
@@ -146,7 +148,7 @@ export const sendSlackMessage = functions.https.onCall(
             recipients: [recipient],
             sender,
             sentAt: admin.firestore.Timestamp.now(),
-            sentBy: context.auth.uid,
+            sentBy: context.auth?.uid || 'mock-user-id', // TEMPORARY: fallback for dev
             status: 'failed',
             errorMessage: error.message,
           });
@@ -163,15 +165,17 @@ export const sendSlackMessage = functions.https.onCall(
 
 /**
  * Get Slack channels for a workspace
+ * TEMPORARY: Auth check disabled for development
  */
 export const getSlackChannels = functions.https.onCall(
   async (data: { workspaceId: string }, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
-    }
+    // TEMPORARY: Disabled for development
+    // if (!context.auth) {
+    //   throw new functions.https.HttpsError(
+    //     'unauthenticated',
+    //     'User must be authenticated'
+    //   );
+    // }
 
     try {
       const { workspaceId } = data;
@@ -214,15 +218,17 @@ export const getSlackChannels = functions.https.onCall(
 
 /**
  * Get Slack users for a workspace
+ * TEMPORARY: Auth check disabled for development
  */
 export const getSlackUsers = functions.https.onCall(
   async (data: { workspaceId: string }, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
-    }
+    // TEMPORARY: Disabled for development
+    // if (!context.auth) {
+    //   throw new functions.https.HttpsError(
+    //     'unauthenticated',
+    //     'User must be authenticated'
+    //   );
+    // }
 
     try {
       const { workspaceId } = data;
@@ -264,18 +270,20 @@ export const getSlackUsers = functions.https.onCall(
 
 /**
  * Get HubSpot contact data
+ * TEMPORARY: Auth check disabled for development
  */
 export const getHubSpotContact = functions.https.onCall(
   async (
     data: { connectionId: string; contactId?: string; email?: string },
     context
   ) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
-    }
+    // TEMPORARY: Disabled for development
+    // if (!context.auth) {
+    //   throw new functions.https.HttpsError(
+    //     'unauthenticated',
+    //     'User must be authenticated'
+    //   );
+    // }
 
     try {
       const { connectionId, contactId, email } = data;
