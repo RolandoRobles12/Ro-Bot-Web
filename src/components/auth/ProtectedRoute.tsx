@@ -24,7 +24,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slack-purple mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-gray-600">Cargando...</p>
         </div>
       </div>
     );
@@ -39,10 +39,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Access Denied
+            Acceso Denegado
           </h2>
           <p className="text-gray-600">
-            You don't have permission to access this page. Required role:{' '}
+            No tienes permiso para acceder a esta página. Rol requerido:{' '}
             {requiredRole}
           </p>
         </div>

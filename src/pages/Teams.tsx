@@ -30,7 +30,7 @@ const USER_TYPES: { value: SalesUserType; label: string; description: string }[]
 ];
 
 const PIPELINES = [
-  { value: 'default', label: 'Default Pipeline' },
+  { value: 'default', label: 'Pipeline Predeterminado' },
   { value: '76732496', label: 'Pipeline BAs (76732496)' },
 ];
 
@@ -423,7 +423,7 @@ export function Teams() {
                     </div>
 
                     <div>
-                      <p className="text-xs text-gray-500">Slack Channel</p>
+                      <p className="text-xs text-gray-500">Canal de Slack</p>
                       <p className="text-sm font-medium text-gray-900">
                         {salesUser.slackChannel}
                       </p>
@@ -577,7 +577,7 @@ export function Teams() {
                   {/* Slack Channel */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Slack Channel *
+                      Canal de Slack *
                     </label>
                     <input
                       {...register('slackChannel', { required: true })}

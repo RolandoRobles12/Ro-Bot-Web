@@ -76,7 +76,7 @@ export function SendMessage() {
       if (selectedTemplate && selectedTemplate.variables.length > 0) {
         const validation = validateVariables(data.content, variableValues);
         if (!validation.valid) {
-          toast.error(`Missing variables: ${validation.missing.join(', ')}`);
+          toast.error(`Variables faltantes: ${validation.missing.join(', ')}`);
           return;
         }
         finalContent = replaceVariables(data.content, variableValues);
@@ -118,14 +118,14 @@ export function SendMessage() {
         sender,
       });
 
-      toast.success('Message sent successfully!');
+      toast.success('Mensaje enviado exitosamente');
       setValue('content', '');
       setValue('recipientValue', '');
       setSelectedTemplate(null);
       setVariableValues({});
     } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error(error.message || 'Failed to send message');
+      toast.error(error.message || 'Error al enviar el mensaje');
     } finally {
       setSending(false);
     }
@@ -136,26 +136,26 @@ export function SendMessage() {
       <div className="text-center py-12">
         <Send className="w-16 h-16 text-gray-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          No Workspace Selected
+          Sin Workspace Seleccionado
         </h2>
         <p className="text-gray-600">
-          Please select a workspace from the header to send messages.
+          Por favor selecciona un workspace desde el encabezado para enviar mensajes.
         </p>
       </div>
     );
   }
 
   const recipientTypeOptions = [
-    { value: 'channel', label: 'Channel', icon: Hash },
-    { value: 'user', label: 'User', icon: User },
-    { value: 'email', label: 'Email', icon: Mail },
+    { value: 'channel', label: 'Canal', icon: Hash },
+    { value: 'user', label: 'Usuario', icon: User },
+    { value: 'email', label: 'Correo', icon: Mail },
   ];
 
   const senderOptions = [
-    { value: 'bot', label: 'Bot (Default)', userId: undefined },
+    { value: 'bot', label: 'Bot (Predeterminado)', userId: undefined },
     ...(selectedWorkspace.userTokens?.map((token) => ({
       value: 'user',
-      label: `${token.userName} (${token.userEmail})${token.isDefault ? ' - Default' : ''}`,
+      label: `${token.userName} (${token.userEmail})${token.isDefault ? ' - Predeterminado' : ''}`,
       userId: token.id,
     })) || []),
   ];
@@ -164,9 +164,9 @@ export function SendMessage() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Send Message</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Enviar Mensaje</h1>
         <p className="text-gray-600 mt-1">
-          Send instant messages to Slack channels or users
+          Envía mensajes instantáneos a canales o usuarios de Slack
         </p>
       </div>
 
@@ -174,7 +174,7 @@ export function SendMessage() {
         {/* Template Selector */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle>Templates</CardTitle>
+            <CardTitle>Plantillas</CardTitle>
           </CardHeader>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {templates.map((template) => (
@@ -195,7 +195,7 @@ export function SendMessage() {
             ))}
             {templates.length === 0 && (
               <p className="text-sm text-gray-500 text-center py-4">
-                No templates available
+                No hay plantillas disponibles
               </p>
             )}
           </div>
@@ -204,20 +204,20 @@ export function SendMessage() {
         {/* Message Composer */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Compose Message</CardTitle>
+            <CardTitle>Componer Mensaje</CardTitle>
           </CardHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Message Content */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Message Content
+                Contenido del Mensaje
               </label>
               <textarea
-                {...register('content', { required: 'Message content is required' })}
+                {...register('content', { required: 'El contenido del mensaje es requerido' })}
                 rows={8}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slack-purple"
-                placeholder="Type your message here..."
+                placeholder="Escribe tu mensaje aquí..."
               />
               {errors.content && (
                 <p className="mt-1 text-sm text-slack-red">{errors.content.message}</p>
@@ -227,12 +227,12 @@ export function SendMessage() {
             {/* Variables */}
             {selectedTemplate && selectedTemplate.variables.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                <p className="text-sm font-medium text-blue-900">Fill Template Variables:</p>
+                <p className="text-sm font-medium text-blue-900">Completar Variables de Plantilla:</p>
                 {selectedTemplate.variables.map((variable) => (
                   <Input
                     key={variable}
                     label={variable}
-                    placeholder={`Enter value for ${variable}`}
+                    placeholder={`Ingresa valor para ${variable}`}
                     value={variableValues[variable] || ''}
                     onChange={(e) => handleVariableChange(variable, e.target.value)}
                   />
@@ -243,7 +243,7 @@ export function SendMessage() {
             {/* Recipient Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Send To
+                Enviar A
               </label>
               <div className="grid grid-cols-3 gap-3 mb-3">
                 {recipientTypeOptions.map((option) => (
@@ -270,12 +270,12 @@ export function SendMessage() {
               <Input
                 placeholder={
                   watch('recipientType') === 'channel'
-                    ? '#channel-name or channel-id'
+                    ? '#nombre-canal o ID del canal'
                     : watch('recipientType') === 'user'
-                    ? '@username or user-id'
-                    : 'user@example.com'
+                    ? '@usuario o ID de usuario'
+                    : 'usuario@ejemplo.com'
                 }
-                {...register('recipientValue', { required: 'Recipient is required' })}
+                {...register('recipientValue', { required: 'El destinatario es requerido' })}
                 error={errors.recipientValue?.message}
               />
             </div>
@@ -283,7 +283,7 @@ export function SendMessage() {
             {/* Sender Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Send As
+                Enviar Como
               </label>
               <Select
                 options={senderOptions}
@@ -304,7 +304,7 @@ export function SendMessage() {
                 classNamePrefix="select"
               />
               <p className="mt-1 text-xs text-gray-500">
-                Choose who will send the message
+                Elige quién enviará el mensaje
               </p>
             </div>
 
@@ -316,7 +316,7 @@ export function SendMessage() {
               disabled={sending}
             >
               <Send className="w-4 h-4 mr-2" />
-              Send Message
+              Enviar Mensaje
             </Button>
           </form>
         </Card>

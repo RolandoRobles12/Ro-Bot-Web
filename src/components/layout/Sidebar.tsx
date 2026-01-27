@@ -14,15 +14,15 @@ import clsx from 'clsx';
 import { useAuthStore } from '@/store/authStore';
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['viewer', 'editor', 'admin'] },
-  { name: 'Templates', href: '/templates', icon: FileText, roles: ['viewer', 'editor', 'admin'] },
-  { name: 'Send Message', href: '/send', icon: Send, roles: ['editor', 'admin'] },
-  { name: 'Scheduled', href: '/scheduled', icon: Calendar, roles: ['viewer', 'editor', 'admin'] },
-  { name: 'History', href: '/history', icon: History, roles: ['viewer', 'editor', 'admin'] },
-  { name: 'Rules', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },
-  { name: 'Teams', href: '/teams', icon: Users, roles: ['admin'] },
+  { name: 'Panel', href: '/', icon: LayoutDashboard, roles: ['viewer', 'editor', 'admin'] },
+  { name: 'Plantillas', href: '/templates', icon: FileText, roles: ['viewer', 'editor', 'admin'] },
+  { name: 'Enviar Mensaje', href: '/send', icon: Send, roles: ['editor', 'admin'] },
+  { name: 'Programados', href: '/scheduled', icon: Calendar, roles: ['viewer', 'editor', 'admin'] },
+  { name: 'Historial', href: '/history', icon: History, roles: ['viewer', 'editor', 'admin'] },
+  { name: 'Reglas', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },
+  { name: 'Equipos', href: '/teams', icon: Users, roles: ['admin'] },
   { name: 'Workspaces', href: '/workspaces', icon: MessageSquare, roles: ['admin'] },
-  { name: 'Settings', href: '/settings', icon: Settings, roles: ['viewer', 'editor', 'admin'] },
+  { name: 'Configuración', href: '/settings', icon: Settings, roles: ['viewer', 'editor', 'admin'] },
 ];
 
 export function Sidebar() {
@@ -38,7 +38,7 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="text-xl font-bold">Ro-Bot</h1>
-            <p className="text-xs text-white/70">Slack Manager</p>
+            <p className="text-xs text-white/70">Gestor de Slack</p>
           </div>
         </div>
       </div>

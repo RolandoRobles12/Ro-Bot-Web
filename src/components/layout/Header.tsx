@@ -50,7 +50,7 @@ export function Header() {
             onChange={(option) => option && setSelectedWorkspace(option.workspace)}
             options={workspaceOptions}
             isLoading={loading}
-            placeholder="Select workspace..."
+            placeholder="Seleccionar workspace..."
             className="text-sm"
             classNamePrefix="select"
             styles={{
@@ -82,7 +82,7 @@ export function Header() {
 
         <Button variant="ghost" size="sm" onClick={signOut}>
           <LogOut className="w-4 h-4 mr-2" />
-          Sign Out
+          Cerrar Sesión
         </Button>
       </div>
     </header>

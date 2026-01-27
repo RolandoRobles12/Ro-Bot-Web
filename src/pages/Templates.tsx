@@ -70,10 +70,10 @@ export function Templates() {
 
       if (editingTemplate) {
         await templateService.update(editingTemplate.id, templateData);
-        toast.success('Template updated successfully!');
+        toast.success('Plantilla actualizada exitosamente');
       } else {
         await templateService.create(templateData as any);
-        toast.success('Template created successfully!');
+        toast.success('Plantilla creada exitosamente');
       }
 
       setShowModal(false);
@@ -81,7 +81,7 @@ export function Templates() {
       reset();
     } catch (error: any) {
       console.error('Error saving template:', error);
-      toast.error(error.message || 'Failed to save template');
+      toast.error(error.message || 'Error al guardar la plantilla');
     }
   };
 
@@ -97,14 +97,14 @@ export function Templates() {
   };
 
   const handleDelete = async (template: MessageTemplate) => {
-    if (!confirm(`Are you sure you want to delete "${template.name}"?`)) return;
+    if (!confirm(`¿Estás seguro de eliminar "${template.name}"?`)) return;
 
     try {
       await templateService.update(template.id, { isActive: false });
-      toast.success('Template deleted successfully!');
+      toast.success('Plantilla eliminada exitosamente');
     } catch (error: any) {
       console.error('Error deleting template:', error);
-      toast.error(error.message || 'Failed to delete template');
+      toast.error(error.message || 'Error al eliminar la plantilla');
     }
   };
 
@@ -114,15 +114,15 @@ export function Templates() {
     try {
       await templateService.create({
         ...template,
-        name: `${template.name} (Copy)`,
+        name: `${template.name} (Copia)`,
         createdBy: user.id,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       } as any);
-      toast.success('Template duplicated successfully!');
+      toast.success('Plantilla duplicada exitosamente');
     } catch (error: any) {
       console.error('Error duplicating template:', error);
-      toast.error(error.message || 'Failed to duplicate template');
+      toast.error(error.message || 'Error al duplicar la plantilla');
     }
   };
 
@@ -131,10 +131,10 @@ export function Templates() {
       <div className="text-center py-12">
         <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          No Workspace Selected
+          Sin Workspace Seleccionado
         </h2>
         <p className="text-gray-600">
-          Please select a workspace from the header to view templates.
+          Por favor selecciona un workspace desde el encabezado para ver las plantillas.
         </p>
       </div>
     );
@@ -145,9 +145,9 @@ export function Templates() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Templates</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Plantillas</h1>
           <p className="text-gray-600 mt-1">
-            Create and manage message templates with HubSpot variables
+            Crea y gestiona plantillas de mensajes con variables de HubSpot
           </p>
         </div>
         {isEditor() && (
@@ -159,7 +159,7 @@ export function Templates() {
             }}
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Template
+            Nueva Plantilla
           </Button>
         )}
       </div>
@@ -173,15 +173,15 @@ export function Templates() {
         <Card className="text-center py-12">
           <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            No Templates Yet
+            Sin Plantillas
           </h2>
           <p className="text-gray-600 mb-4">
-            Create your first template to get started
+            Crea tu primera plantilla para comenzar
           </p>
           {isEditor() && (
             <Button onClick={() => setShowModal(true)}>
               <Plus className="w-4 h-4 mr-2" />
-              Create Template
+              Crear Plantilla
             </Button>
           )}
         </Card>
@@ -210,6 +210,7 @@ export function Templates() {
               {template.variables.length > 0 && (
                 <div className="mb-3">
                   <p className="text-xs text-gray-500 mb-1">Variables:</p>
+
                   <div className="flex flex-wrap gap-1">
                     {template.variables.map((variable) => (
                       <span
@@ -224,7 +225,7 @@ export function Templates() {
               )}
 
               <div className="text-xs text-gray-500 mb-3">
-                Created {format(template.createdAt.toDate(), 'MMM dd, yyyy')}
+                Creado {format(template.createdAt.toDate(), 'dd MMM, yyyy')}
               </div>
 
               {isEditor() && (
@@ -265,35 +266,35 @@ export function Templates() {
           setEditingTemplate(null);
           reset();
         }}
-        title={editingTemplate ? 'Edit Template' : 'Create Template'}
+        title={editingTemplate ? 'Editar Plantilla' : 'Crear Plantilla'}
         size="lg"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input
-            label="Template Name"
-            placeholder="e.g., Welcome Message"
-            {...register('name', { required: 'Name is required' })}
+            label="Nombre de Plantilla"
+            placeholder="Ej: Mensaje de Bienvenida"
+            {...register('name', { required: 'El nombre es requerido' })}
             error={errors.name?.message}
           />
 
           <Input
-            label="Description (Optional)"
-            placeholder="Brief description of this template"
+            label="Descripción (Opcional)"
+            placeholder="Breve descripción de esta plantilla"
             {...register('description')}
           />
 
           <Input
-            label="Category (Optional)"
-            placeholder="e.g., onboarding, alerts, reminders"
+            label="Categoría (Opcional)"
+            placeholder="Ej: onboarding, alertas, recordatorios"
             {...register('category')}
           />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Message Content
+              Contenido del Mensaje
             </label>
             <textarea
-              {...register('content', { required: 'Content is required' })}
+              {...register('content', { required: 'El contenido es requerido' })}
               rows={8}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slack-purple"
               placeholder="Hi {{contact.firstname}}, welcome to our platform!"
@@ -302,14 +303,14 @@ export function Templates() {
               <p className="mt-1 text-sm text-slack-red">{errors.content.message}</p>
             )}
             <p className="mt-1 text-xs text-gray-500">
-              Use {'{{variable}}'} syntax for HubSpot variables. Example: {'{{contact.firstname}}'}
+              Usa la sintaxis {'{{variable}}'} para variables de HubSpot. Ejemplo: {'{{contact.firstname}}'}
             </p>
           </div>
 
           {detectedVariables.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm font-medium text-blue-900 mb-2">
-                Detected Variables ({detectedVariables.length}):
+                Variables Detectadas ({detectedVariables.length}):
               </p>
               <div className="flex flex-wrap gap-2">
                 {detectedVariables.map((variable) => (
@@ -334,10 +335,10 @@ export function Templates() {
                 reset();
               }}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit">
-              {editingTemplate ? 'Update Template' : 'Create Template'}
+              {editingTemplate ? 'Actualizar Plantilla' : 'Crear Plantilla'}
             </Button>
           </div>
         </form>
