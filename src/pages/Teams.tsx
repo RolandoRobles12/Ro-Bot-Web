@@ -273,13 +273,32 @@ export function Teams() {
             Gestiona usuarios, metas y métricas de desempeño
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Agregar Usuario</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={calculateAllMetrics}
+            disabled={calculatingAll || filteredUsers.length === 0}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {calculatingAll ? (
+              <>
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                <span>Calculando...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="w-5 h-5" />
+                <span>Calcular Métricas</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={openCreateModal}
+            className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Agregar Usuario</span>
+          </button>
+        </div>
       </div>
 
       {/* Workspace & Type Filters */}
@@ -436,6 +455,18 @@ export function Teams() {
                 </div>
 
                 <div className="flex items-center space-x-2 ml-4">
+                  <button
+                    onClick={() => calculateMetricsForUser(salesUser)}
+                    disabled={calculatingMetrics.has(salesUser.id)}
+                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Calcular métricas"
+                  >
+                    {calculatingMetrics.has(salesUser.id) ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Activity className="w-5 h-5" />
+                    )}
+                  </button>
                   <button
                     onClick={() => openEditModal(salesUser)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
