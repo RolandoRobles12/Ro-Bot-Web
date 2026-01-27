@@ -9,6 +9,7 @@ import {
   Zap,
   Users,
   MessageSquare,
+  CalendarClock,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuthStore } from '@/store/authStore';
@@ -17,6 +18,7 @@ const navigation = [
   { name: 'Panel', href: '/', icon: LayoutDashboard, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Plantillas', href: '/templates', icon: FileText, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Enviar Mensaje', href: '/send', icon: Send, roles: ['editor', 'admin'] },
+  { name: 'Programador', href: '/scheduler', icon: CalendarClock, roles: ['editor', 'admin'] },
   { name: 'Programados', href: '/scheduled', icon: Calendar, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Historial', href: '/history', icon: History, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Reglas', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },

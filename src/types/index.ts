@@ -324,3 +324,168 @@ export interface CoachingSession {
   createdAt: Timestamp;
   resolvedAt?: Timestamp;
 }
+
+// ==========================================================================
+// =                  NO-CODE MESSAGE SCHEDULER TYPES                       =
+// ==========================================================================
+
+/**
+ * A time slot within a campaign schedule.
+ * Defines specific days and time when messages should be sent.
+ */
+export interface CampaignScheduleSlot {
+  id: string;
+  daysOfWeek: number[];       // 0=Domingo, 1=Lunes, ..., 6=Sábado
+  time: string;               // HH:mm format
+  timezone: string;           // e.g., 'America/Mexico_City'
+  label?: string;             // e.g., "Reporte matutino"
+}
+
+/**
+ * How recipients are selected for a campaign.
+ */
+export type RecipientSourceType =
+  | 'sales_user_type'         // Filter by SalesUser type (kiosco, atn, ba, alianza)
+  | 'specific_users'          // Specific SalesUser IDs
+  | 'channel';                // Specific Slack channel IDs
+
+export interface CampaignRecipientConfig {
+  sourceType: RecipientSourceType;
+  salesUserTypes?: SalesUserType[];   // For 'sales_user_type'
+  specificUserIds?: string[];         // For 'specific_users'
+  channelIds?: string[];              // For 'channel'
+  channelNames?: string[];            // Display names for channels
+}
+
+/**
+ * A message variant with optional conditions.
+ * Variants are evaluated in priority order; the first matching variant is used.
+ * A variant with conditionType='always' serves as the default/fallback.
+ */
+export interface MessageVariant {
+  id: string;
+  label: string;                      // Descriptive name, e.g., "Desempeño crítico"
+  conditionType: 'always' | 'performance_category' | 'metric_threshold';
+  // For 'performance_category'
+  performanceCategories?: CategoriaDesempeno[];
+  // For 'metric_threshold'
+  metricField?: string;               // e.g., 'pct_ventas', 'solicitudes'
+  metricOperator?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'between';
+  metricValue?: number;
+  metricValueEnd?: number;            // For 'between'
+  // Message content
+  messageTemplate: string;            // Template with {{variables}}
+  priority: number;                   // Lower = higher priority
+}
+
+/**
+ * AI configuration for a campaign.
+ * When enabled, AI rewrites or generates messages based on the template.
+ */
+export interface CampaignAIConfig {
+  enabled: boolean;
+  systemPrompt?: string;              // System prompt for AI
+  temperature?: number;               // 0.0 - 1.0
+  maxTokens?: number;
+  rewriteMode: 'rewrite' | 'generate';
+  // 'rewrite' = AI rewrites the template (keeps structure, adds variation)
+  // 'generate' = AI creates message from scratch using template as context
+}
+
+/**
+ * Data source configuration for a campaign.
+ * Defines what HubSpot metrics to fetch for each recipient.
+ */
+export interface CampaignDataConfig {
+  fetchSolicitudes: boolean;
+  fetchVentasAvanzadas: boolean;
+  fetchVentasReales: boolean;
+  fetchVideollamadas: boolean;        // For BAs
+  calculatePerformanceCategory: boolean;
+  dateRange: 'current_week' | 'last_week' | 'current_month' | 'today';
+  customPipeline?: string;            // Override pipeline ID
+  customStages?: string[];            // Override advanced stage IDs
+}
+
+/**
+ * Top-level campaign entity.
+ * Represents a complete no-code message schedule that can be
+ * created, configured, and activated by any admin/editor.
+ *
+ * Available template variables:
+ *   {{nombre}}              - User name
+ *   {{solicitudes}}         - Current solicitudes count
+ *   {{meta_solicitudes}}    - Solicitudes goal
+ *   {{pct_solicitudes}}     - % of solicitudes goal
+ *   {{ventas}}              - Current sales amount (formatted)
+ *   {{meta_ventas}}         - Sales goal (formatted)
+ *   {{pct_ventas}}          - % of sales goal
+ *   {{ventas_avanzadas}}    - Advanced sales amount
+ *   {{pct_ventas_avanzadas}}- % of advanced sales goal
+ *   {{categoria}}           - Performance category name
+ *   {{dias_restantes}}      - Days remaining in period
+ *   {{progreso_esperado}}   - Expected progress %
+ *   {{tipo_usuario}}        - User type (kiosco, atn, ba, alianza)
+ *   {{videollamadas_dia}}   - Video calls today (BAs)
+ *   {{videollamadas_semana}}- Video calls this week (BAs)
+ */
+export interface MessageCampaign {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string;
+
+  // Schedule
+  scheduleSlots: CampaignScheduleSlot[];
+
+  // Recipients
+  recipientConfig: CampaignRecipientConfig;
+
+  // Message
+  messageVariants: MessageVariant[];
+  mentionUser?: boolean;              // Mention user with @ in Slack
+
+  // AI (optional)
+  aiConfig?: CampaignAIConfig;
+
+  // Data source (optional - for metric-driven messages)
+  dataConfig?: CampaignDataConfig;
+
+  // Status
+  isActive: boolean;
+  lastExecuted?: Timestamp;
+  nextExecution?: Timestamp;
+  executionCount: number;
+
+  // Audit
+  createdBy: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * Log entry for a campaign execution.
+ */
+export interface CampaignExecution {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  workspaceId: string;
+  executedAt: Timestamp;
+  scheduleSlotId?: string;
+  recipientCount: number;
+  successCount: number;
+  failureCount: number;
+  details: CampaignExecutionDetail[];
+}
+
+export interface CampaignExecutionDetail {
+  userId: string;
+  userName: string;
+  channel: string;
+  status: 'sent' | 'failed';
+  messageSent: string;
+  variantUsed?: string;               // MessageVariant.id
+  errorMessage?: string;
+  metrics?: Record<string, number>;
+}
