@@ -8,6 +8,7 @@ import { Templates } from './pages/Templates';
 import { SendMessage } from './pages/SendMessage';
 import { Workspaces } from './pages/Workspaces';
 import { Rules } from './pages/Rules';
+import { Teams } from './pages/Teams';
 
 function App() {
   // TEMPORARY: Disabled auth loading check for development
@@ -71,6 +72,17 @@ function App() {
               <ProtectedRoute requiredRole="editor">
                 <Layout>
                   <Rules />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/teams"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <Layout>
+                  <Teams />
                 </Layout>
               </ProtectedRoute>
             }
