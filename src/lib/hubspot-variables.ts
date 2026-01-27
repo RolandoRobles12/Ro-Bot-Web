@@ -4,36 +4,36 @@ import { HubSpotVariable } from '@/types';
  * Common HubSpot properties that can be used as variables in templates
  */
 export const HUBSPOT_CONTACT_VARIABLES: HubSpotVariable[] = [
-  { name: 'contact.firstname', label: 'First Name', type: 'contact', path: 'properties.firstname', example: 'John' },
-  { name: 'contact.lastname', label: 'Last Name', type: 'contact', path: 'properties.lastname', example: 'Doe' },
-  { name: 'contact.email', label: 'Email', type: 'contact', path: 'properties.email', example: 'john@example.com' },
-  { name: 'contact.phone', label: 'Phone', type: 'contact', path: 'properties.phone', example: '+1234567890' },
-  { name: 'contact.company', label: 'Company Name', type: 'contact', path: 'properties.company', example: 'Acme Inc' },
-  { name: 'contact.jobtitle', label: 'Job Title', type: 'contact', path: 'properties.jobtitle', example: 'CEO' },
-  { name: 'contact.website', label: 'Website', type: 'contact', path: 'properties.website', example: 'www.example.com' },
-  { name: 'contact.city', label: 'City', type: 'contact', path: 'properties.city', example: 'New York' },
-  { name: 'contact.state', label: 'State', type: 'contact', path: 'properties.state', example: 'NY' },
-  { name: 'contact.country', label: 'Country', type: 'contact', path: 'properties.country', example: 'USA' },
+  { name: 'contact.firstname', label: 'Nombre', type: 'contact', path: 'properties.firstname', example: 'Juan' },
+  { name: 'contact.lastname', label: 'Apellido', type: 'contact', path: 'properties.lastname', example: 'Pérez' },
+  { name: 'contact.email', label: 'Correo', type: 'contact', path: 'properties.email', example: 'juan@ejemplo.com' },
+  { name: 'contact.phone', label: 'Teléfono', type: 'contact', path: 'properties.phone', example: '+521234567890' },
+  { name: 'contact.company', label: 'Nombre de Empresa', type: 'contact', path: 'properties.company', example: 'Empresa SA' },
+  { name: 'contact.jobtitle', label: 'Puesto', type: 'contact', path: 'properties.jobtitle', example: 'Director' },
+  { name: 'contact.website', label: 'Sitio Web', type: 'contact', path: 'properties.website', example: 'www.ejemplo.com' },
+  { name: 'contact.city', label: 'Ciudad', type: 'contact', path: 'properties.city', example: 'Ciudad de México' },
+  { name: 'contact.state', label: 'Estado', type: 'contact', path: 'properties.state', example: 'CDMX' },
+  { name: 'contact.country', label: 'País', type: 'contact', path: 'properties.country', example: 'México' },
 ];
 
 export const HUBSPOT_COMPANY_VARIABLES: HubSpotVariable[] = [
-  { name: 'company.name', label: 'Company Name', type: 'company', path: 'properties.name', example: 'Acme Inc' },
-  { name: 'company.domain', label: 'Domain', type: 'company', path: 'properties.domain', example: 'acme.com' },
-  { name: 'company.industry', label: 'Industry', type: 'company', path: 'properties.industry', example: 'Technology' },
-  { name: 'company.employees', label: 'Number of Employees', type: 'company', path: 'properties.numberofemployees', example: '50' },
-  { name: 'company.revenue', label: 'Annual Revenue', type: 'company', path: 'properties.annualrevenue', example: '1000000' },
-  { name: 'company.phone', label: 'Phone', type: 'company', path: 'properties.phone', example: '+1234567890' },
-  { name: 'company.city', label: 'City', type: 'company', path: 'properties.city', example: 'San Francisco' },
-  { name: 'company.state', label: 'State', type: 'company', path: 'properties.state', example: 'CA' },
+  { name: 'company.name', label: 'Nombre de Empresa', type: 'company', path: 'properties.name', example: 'Empresa SA' },
+  { name: 'company.domain', label: 'Dominio', type: 'company', path: 'properties.domain', example: 'empresa.com' },
+  { name: 'company.industry', label: 'Industria', type: 'company', path: 'properties.industry', example: 'Tecnología' },
+  { name: 'company.employees', label: 'Número de Empleados', type: 'company', path: 'properties.numberofemployees', example: '50' },
+  { name: 'company.revenue', label: 'Ingresos Anuales', type: 'company', path: 'properties.annualrevenue', example: '1000000' },
+  { name: 'company.phone', label: 'Teléfono', type: 'company', path: 'properties.phone', example: '+521234567890' },
+  { name: 'company.city', label: 'Ciudad', type: 'company', path: 'properties.city', example: 'Monterrey' },
+  { name: 'company.state', label: 'Estado', type: 'company', path: 'properties.state', example: 'NL' },
 ];
 
 export const HUBSPOT_DEAL_VARIABLES: HubSpotVariable[] = [
-  { name: 'deal.name', label: 'Deal Name', type: 'deal', path: 'properties.dealname', example: 'Q1 2024 Contract' },
-  { name: 'deal.amount', label: 'Amount', type: 'deal', path: 'properties.amount', example: '50000' },
-  { name: 'deal.stage', label: 'Deal Stage', type: 'deal', path: 'properties.dealstage', example: 'negotiation' },
-  { name: 'deal.closedate', label: 'Close Date', type: 'deal', path: 'properties.closedate', example: '2024-03-31' },
+  { name: 'deal.name', label: 'Nombre del Negocio', type: 'deal', path: 'properties.dealname', example: 'Contrato Q1 2024' },
+  { name: 'deal.amount', label: 'Monto', type: 'deal', path: 'properties.amount', example: '50000' },
+  { name: 'deal.stage', label: 'Etapa del Negocio', type: 'deal', path: 'properties.dealstage', example: 'negociación' },
+  { name: 'deal.closedate', label: 'Fecha de Cierre', type: 'deal', path: 'properties.closedate', example: '2024-03-31' },
   { name: 'deal.pipeline', label: 'Pipeline', type: 'deal', path: 'properties.pipeline', example: 'default' },
-  { name: 'deal.probability', label: 'Probability', type: 'deal', path: 'properties.probability', example: '75' },
+  { name: 'deal.probability', label: 'Probabilidad', type: 'deal', path: 'properties.probability', example: '75' },
 ];
 
 export const ALL_HUBSPOT_VARIABLES: HubSpotVariable[] = [

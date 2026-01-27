@@ -5,7 +5,7 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { auth, googleProvider, db } from '@/config/firebase';
+import { auth, googleProvider, usersDb } from '@/config/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { User } from '@/types';
 import { toast } from 'sonner';
@@ -20,13 +20,13 @@ export function useAuth() {
 
       if (firebaseUser) {
         // Get or create user document
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        const userDoc = await getDoc(doc(usersDb, 'users', firebaseUser.uid));
 
         if (userDoc.exists()) {
           // Update last login
           const userData = { id: userDoc.id, ...userDoc.data() } as User;
           await setDoc(
-            doc(db, 'users', firebaseUser.uid),
+            doc(usersDb, 'users', firebaseUser.uid),
             { lastLogin: Timestamp.now() },
             { merge: true }
           );
@@ -42,7 +42,7 @@ export function useAuth() {
             lastLogin: Timestamp.now(),
           };
 
-          await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+          await setDoc(doc(usersDb, 'users', firebaseUser.uid), newUser);
           setUser({ id: firebaseUser.uid, ...newUser });
         }
       } else {
@@ -58,10 +58,10 @@ export function useAuth() {
   const signInWithGoogle = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-      toast.success('Signed in successfully!');
+      toast.success('Sesión iniciada exitosamente');
     } catch (error: any) {
-      console.error('Sign in error:', error);
-      toast.error(error.message || 'Failed to sign in');
+      console.error('Error al iniciar sesión:', error);
+      toast.error(error.message || 'Error al iniciar sesión');
       throw error;
     }
   };
@@ -69,10 +69,10 @@ export function useAuth() {
   const signOut = async () => {
     try {
       await firebaseSignOut(auth);
-      toast.success('Signed out successfully!');
+      toast.success('Sesión cerrada exitosamente');
     } catch (error: any) {
-      console.error('Sign out error:', error);
-      toast.error(error.message || 'Failed to sign out');
+      console.error('Error al cerrar sesión:', error);
+      toast.error(error.message || 'Error al cerrar sesión');
       throw error;
     }
   };

@@ -20,7 +20,7 @@ interface AuthState {
 const MOCK_USER: User = {
   id: 'mock-user-id',
   email: 'dev@example.com',
-  displayName: 'Development User',
+  displayName: 'Usuario de Desarrollo',
   role: 'admin',
   createdAt: Timestamp.now(),
   lastLogin: Timestamp.now(),

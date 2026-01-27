@@ -70,10 +70,10 @@ export function Workspaces() {
 
       if (editingWorkspace) {
         await workspaceService.update(editingWorkspace.id, workspaceData);
-        toast.success('Workspace updated successfully!');
+        toast.success('Workspace actualizado exitosamente');
       } else {
         await workspaceService.create(workspaceData);
-        toast.success('Workspace created successfully!');
+        toast.success('Workspace creado exitosamente');
       }
 
       setShowWorkspaceModal(false);
@@ -81,7 +81,7 @@ export function Workspaces() {
       resetWorkspace();
     } catch (error: any) {
       console.error('Error saving workspace:', error);
-      toast.error(error.message || 'Failed to save workspace');
+      toast.error(error.message || 'Error al guardar workspace');
     }
   };
 
@@ -110,14 +110,14 @@ export function Workspaces() {
       userTokens.push(newToken);
 
       await workspaceService.update(selectedWorkspaceForToken.id, { userTokens });
-      toast.success('User token added successfully!');
+      toast.success('Token de usuario agregado exitosamente');
 
       setShowTokenModal(false);
       setSelectedWorkspaceForToken(null);
       resetToken();
     } catch (error: any) {
       console.error('Error adding user token:', error);
-      toast.error(error.message || 'Failed to add user token');
+      toast.error(error.message || 'Error al agregar token de usuario');
     }
   };
 
@@ -134,27 +134,27 @@ export function Workspaces() {
   };
 
   const handleDelete = async (workspace: SlackWorkspace) => {
-    if (!confirm(`Are you sure you want to delete "${workspace.name}"?`)) return;
+    if (!confirm(`¿Estás seguro de eliminar "${workspace.name}"?`)) return;
 
     try {
       await workspaceService.update(workspace.id, { isActive: false });
-      toast.success('Workspace deleted successfully!');
+      toast.success('Workspace eliminado exitosamente');
     } catch (error: any) {
       console.error('Error deleting workspace:', error);
-      toast.error(error.message || 'Failed to delete workspace');
+      toast.error(error.message || 'Error al eliminar workspace');
     }
   };
 
   const handleRemoveUserToken = async (workspace: SlackWorkspace, tokenId: string) => {
-    if (!confirm('Are you sure you want to remove this user token?')) return;
+    if (!confirm('¿Estás seguro de eliminar este token de usuario?')) return;
 
     try {
       const userTokens = workspace.userTokens.filter(t => t.id !== tokenId);
       await workspaceService.update(workspace.id, { userTokens });
-      toast.success('User token removed successfully!');
+      toast.success('Token de usuario eliminado exitosamente');
     } catch (error: any) {
       console.error('Error removing user token:', error);
-      toast.error(error.message || 'Failed to remove user token');
+      toast.error(error.message || 'Error al eliminar token de usuario');
     }
   };
 
@@ -165,7 +165,7 @@ export function Workspaces() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Workspaces</h1>
           <p className="text-gray-600 mt-1">
-            Manage your Slack workspaces and user tokens
+            Gestiona tus workspaces de Slack y tokens de usuario
           </p>
         </div>
         <Button onClick={() => {
@@ -174,7 +174,7 @@ export function Workspaces() {
           setShowWorkspaceModal(true);
         }}>
           <Plus className="w-4 h-4 mr-2" />
-          Add Workspace
+          Agregar Workspace
         </Button>
       </div>
 
@@ -187,14 +187,14 @@ export function Workspaces() {
         <Card className="text-center py-12">
           <MessageSquare className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            No Workspaces Yet
+            Sin Workspaces
           </h2>
           <p className="text-gray-600 mb-4">
-            Add your first Slack workspace to get started
+            Agrega tu primer workspace de Slack para comenzar
           </p>
           <Button onClick={() => setShowWorkspaceModal(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Workspace
+            Agregar Workspace
           </Button>
         </Card>
       ) : (
@@ -227,9 +227,9 @@ export function Workspaces() {
                 {/* Bot Token */}
                 <div className="flex items-center space-x-2 text-sm">
                   <Key className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-600">Bot Token:</span>
+                  <span className="text-gray-600">Token de Bot:</span>
                   <span className="text-gray-900 font-mono">
-                    {workspace.botToken ? '••••••••' : 'Not configured'}
+                    {workspace.botToken ? '••••••••' : 'No configurado'}
                   </span>
                 </div>
 
@@ -238,7 +238,7 @@ export function Workspaces() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2 text-sm">
                       <User className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-600">User Tokens:</span>
+                      <span className="text-gray-600">Tokens de Usuario:</span>
                       <span className="text-gray-900 font-semibold">
                         {workspace.userTokens?.length || 0}
                       </span>
@@ -253,7 +253,7 @@ export function Workspaces() {
                       }}
                     >
                       <Plus className="w-3 h-3 mr-1" />
-                      Add Token
+                      Agregar Token
                     </Button>
                   </div>
 
@@ -269,7 +269,7 @@ export function Workspaces() {
                               {token.userName}
                               {token.isDefault && (
                                 <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">
-                                  Default
+                                  Predeterminado
                                 </span>
                               )}
                             </p>
@@ -305,45 +305,45 @@ export function Workspaces() {
           setEditingWorkspace(null);
           resetWorkspace();
         }}
-        title={editingWorkspace ? 'Edit Workspace' : 'Add Workspace'}
+        title={editingWorkspace ? 'Editar Workspace' : 'Agregar Workspace'}
         size="lg"
       >
         <form onSubmit={handleSubmitWorkspace(onSubmitWorkspace)} className="space-y-4">
           <Input
-            label="Workspace Name"
-            placeholder="e.g., Marketing Team"
-            {...registerWorkspace('name', { required: 'Name is required' })}
+            label="Nombre del Workspace"
+            placeholder="Ej: Equipo de Marketing"
+            {...registerWorkspace('name', { required: 'El nombre es requerido' })}
             error={workspaceErrors.name?.message}
           />
 
           <Input
-            label="Team ID"
-            placeholder="e.g., T01234567"
-            {...registerWorkspace('teamId', { required: 'Team ID is required' })}
+            label="ID del Equipo"
+            placeholder="Ej: T01234567"
+            {...registerWorkspace('teamId', { required: 'El ID del equipo es requerido' })}
             error={workspaceErrors.teamId?.message}
-            helperText="Find this in Slack workspace settings"
+            helperText="Encuéntralo en la configuración del workspace de Slack"
           />
 
           <Input
-            label="Team Name"
-            placeholder="e.g., My Company Workspace"
-            {...registerWorkspace('teamName', { required: 'Team name is required' })}
+            label="Nombre del Equipo"
+            placeholder="Ej: Workspace de Mi Empresa"
+            {...registerWorkspace('teamName', { required: 'El nombre del equipo es requerido' })}
             error={workspaceErrors.teamName?.message}
           />
 
           <Input
-            label="Bot Token (Optional)"
+            label="Token de Bot (Opcional)"
             placeholder="xoxb-your-bot-token"
             type="password"
             {...registerWorkspace('botToken')}
-            helperText="Bot User OAuth Token from your Slack App"
+            helperText="Token OAuth del Bot de tu App de Slack"
           />
 
           <Input
-            label="Webhook URL (Optional)"
+            label="URL de Webhook (Opcional)"
             placeholder="https://hooks.slack.com/services/..."
             {...registerWorkspace('webhookUrl')}
-            helperText="Incoming webhook URL for simple messages"
+            helperText="URL de webhook entrante para mensajes simples"
           />
 
           <div className="flex justify-end space-x-3 pt-4">
@@ -356,10 +356,10 @@ export function Workspaces() {
                 resetWorkspace();
               }}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit">
-              {editingWorkspace ? 'Update' : 'Add'} Workspace
+              {editingWorkspace ? 'Actualizar' : 'Agregar'} Workspace
             </Button>
           </div>
         </form>
@@ -373,32 +373,32 @@ export function Workspaces() {
           setSelectedWorkspaceForToken(null);
           resetToken();
         }}
-        title="Add User Token"
+        title="Agregar Token de Usuario"
         size="lg"
       >
         <form onSubmit={handleSubmitToken(onSubmitUserToken)} className="space-y-4">
           <Input
-            label="User Name"
-            placeholder="e.g., John Doe"
-            {...registerToken('userName', { required: 'User name is required' })}
+            label="Nombre de Usuario"
+            placeholder="Ej: Juan Pérez"
+            {...registerToken('userName', { required: 'El nombre es requerido' })}
             error={tokenErrors.userName?.message}
           />
 
           <Input
-            label="User Email"
+            label="Correo del Usuario"
             type="email"
             placeholder="john@example.com"
-            {...registerToken('userEmail', { required: 'Email is required' })}
+            {...registerToken('userEmail', { required: 'El correo es requerido' })}
             error={tokenErrors.userEmail?.message}
           />
 
           <Input
-            label="User OAuth Token"
+            label="Token OAuth de Usuario"
             placeholder="xoxp-your-user-token"
             type="password"
-            {...registerToken('token', { required: 'Token is required' })}
+            {...registerToken('token', { required: 'El token es requerido' })}
             error={tokenErrors.token?.message}
-            helperText="User OAuth Token from Slack OAuth flow"
+            helperText="Token OAuth de Usuario del flujo OAuth de Slack"
           />
 
           <div className="flex items-center space-x-2">
@@ -409,7 +409,7 @@ export function Workspaces() {
               className="w-4 h-4 text-slack-purple border-gray-300 rounded focus:ring-slack-purple"
             />
             <label htmlFor="isDefault" className="text-sm text-gray-700">
-              Set as default sender for this workspace
+              Establecer como remitente predeterminado para este workspace
             </label>
           </div>
 
@@ -423,9 +423,9 @@ export function Workspaces() {
                 resetToken();
               }}
             >
-              Cancel
+              Cancelar
             </Button>
-            <Button type="submit">Add Token</Button>
+            <Button type="submit">Agregar Token</Button>
           </div>
         </form>
       </Modal>

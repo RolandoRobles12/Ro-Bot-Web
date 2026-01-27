@@ -16,7 +16,7 @@ import {
   onSnapshot,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { db, usersDb } from '@/config/firebase';
 import {
   User,
   SlackWorkspace,
@@ -108,16 +108,82 @@ export function subscribeToCollection<T>(
   });
 }
 
-// User services
+// Helpers para Firestore externo (usuarios)
+// Usan usersDb en lugar de db para permitir que los usuarios
+// estén en un proyecto Firebase diferente
+async function getUserDocument<T>(
+  collectionName: string,
+  docId: string
+): Promise<T | null> {
+  const docRef = doc(usersDb, collectionName, docId);
+  const docSnap = await getDoc(docRef);
+  return docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as T) : null;
+}
+
+async function getUserDocuments<T>(
+  collectionName: string,
+  ...constraints: QueryConstraint[]
+): Promise<T[]> {
+  const q = query(collection(usersDb, collectionName), ...constraints);
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as T));
+}
+
+async function createUserDocument<T extends DocumentData>(
+  collectionName: string,
+  data: Omit<T, 'id'>
+): Promise<string> {
+  const docRef = await addDoc(collection(usersDb, collectionName), {
+    ...data,
+    createdAt: Timestamp.now(),
+  });
+  return docRef.id;
+}
+
+async function updateUserDocument(
+  collectionName: string,
+  docId: string,
+  data: Partial<DocumentData>
+): Promise<void> {
+  const docRef = doc(usersDb, collectionName, docId);
+  await updateDoc(docRef, {
+    ...data,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+async function deleteUserDocument(
+  collectionName: string,
+  docId: string
+): Promise<void> {
+  const docRef = doc(usersDb, collectionName, docId);
+  await deleteDoc(docRef);
+}
+
+function subscribeToUserDocument<T>(
+  collectionName: string,
+  docId: string,
+  callback: (data: T | null) => void
+): Unsubscribe {
+  const docRef = doc(usersDb, collectionName, docId);
+  return onSnapshot(docRef, (snapshot) => {
+    const data = snapshot.exists()
+      ? ({ id: snapshot.id, ...snapshot.data() } as T)
+      : null;
+    callback(data);
+  });
+}
+
+// Servicios de usuarios (usan usersDb - puede ser un proyecto Firebase externo)
 export const userService = {
-  get: (userId: string) => getDocument<User>('users', userId),
-  getAll: () => getDocuments<User>('users'),
-  create: (data: Omit<User, 'id'>) => createDocument<User>('users', data),
+  get: (userId: string) => getUserDocument<User>('users', userId),
+  getAll: () => getUserDocuments<User>('users'),
+  create: (data: Omit<User, 'id'>) => createUserDocument<User>('users', data),
   update: (userId: string, data: Partial<User>) =>
-    updateDocument('users', userId, data),
-  delete: (userId: string) => deleteDocument('users', userId),
+    updateUserDocument('users', userId, data),
+  delete: (userId: string) => deleteUserDocument('users', userId),
   subscribe: (userId: string, callback: (user: User | null) => void) =>
-    subscribeToDocument<User>('users', userId, callback),
+    subscribeToUserDocument<User>('users', userId, callback),
 };
 
 // Workspace services

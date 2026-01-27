@@ -24,33 +24,33 @@ interface RuleFormData {
 }
 
 const CALCULATION_TYPES: { value: CalculationType; label: string; description: string }[] = [
-  { value: 'sum', label: 'Sum', description: 'Add multiple values' },
-  { value: 'average', label: 'Average', description: 'Calculate average of values' },
-  { value: 'divide', label: 'Divide', description: 'Divide first value by second (e.g., conversion rate)' },
-  { value: 'multiply', label: 'Multiply', description: 'Multiply values together' },
-  { value: 'subtract', label: 'Subtract', description: 'Subtract second value from first' },
-  { value: 'count', label: 'Count', description: 'Count number of items' },
+  { value: 'sum', label: 'Suma', description: 'Sumar múltiples valores' },
+  { value: 'average', label: 'Promedio', description: 'Calcular promedio de valores' },
+  { value: 'divide', label: 'Dividir', description: 'Dividir primer valor entre segundo (ej: tasa de conversión)' },
+  { value: 'multiply', label: 'Multiplicar', description: 'Multiplicar valores' },
+  { value: 'subtract', label: 'Restar', description: 'Restar segundo valor del primero' },
+  { value: 'count', label: 'Contar', description: 'Contar número de elementos' },
 ];
 
 const HUBSPOT_PROPERTIES = [
-  { value: 'dealstage', label: 'Deal Stage', category: 'deal' },
-  { value: 'amount', label: 'Deal Amount', category: 'deal' },
-  { value: 'closedate', label: 'Close Date', category: 'deal' },
-  { value: 'num_associated_contacts', label: 'Number of Contacts', category: 'deal' },
-  { value: 'hs_deal_stage_probability', label: 'Deal Probability', category: 'deal' },
-  { value: 'email', label: 'Email', category: 'contact' },
-  { value: 'firstname', label: 'First Name', category: 'contact' },
-  { value: 'lastname', label: 'Last Name', category: 'contact' },
-  { value: 'lifecyclestage', label: 'Lifecycle Stage', category: 'contact' },
+  { value: 'dealstage', label: 'Etapa del Negocio', category: 'negocio' },
+  { value: 'amount', label: 'Monto del Negocio', category: 'negocio' },
+  { value: 'closedate', label: 'Fecha de Cierre', category: 'negocio' },
+  { value: 'num_associated_contacts', label: 'Número de Contactos', category: 'negocio' },
+  { value: 'hs_deal_stage_probability', label: 'Probabilidad del Negocio', category: 'negocio' },
+  { value: 'email', label: 'Correo', category: 'contacto' },
+  { value: 'firstname', label: 'Nombre', category: 'contacto' },
+  { value: 'lastname', label: 'Apellido', category: 'contacto' },
+  { value: 'lifecyclestage', label: 'Etapa del Ciclo de Vida', category: 'contacto' },
 ];
 
 const OPERATORS = [
-  { value: 'equals', label: 'Equals' },
-  { value: 'not_equals', label: 'Not Equals' },
-  { value: 'greater_than', label: 'Greater Than' },
-  { value: 'less_than', label: 'Less Than' },
-  { value: 'contains', label: 'Contains' },
-  { value: 'between', label: 'Between' },
+  { value: 'equals', label: 'Igual a' },
+  { value: 'not_equals', label: 'Diferente de' },
+  { value: 'greater_than', label: 'Mayor que' },
+  { value: 'less_than', label: 'Menor que' },
+  { value: 'contains', label: 'Contiene' },
+  { value: 'between', label: 'Entre' },
 ];
 
 export function Rules() {
@@ -105,7 +105,7 @@ export function Rules() {
         setSelectedWorkspace(data[0].id);
       }
     } catch (error) {
-      toast.error('Failed to load workspaces');
+      toast.error('Error al cargar workspaces');
       console.error(error);
     }
   };
@@ -116,7 +116,7 @@ export function Rules() {
       const data = await ruleService.getByWorkspace(workspaceId);
       setRules(data);
     } catch (error) {
-      toast.error('Failed to load rules');
+      toast.error('Error al cargar reglas');
       console.error(error);
     } finally {
       setLoading(false);
@@ -163,7 +163,7 @@ export function Rules() {
           ...data,
           updatedAt: Timestamp.now(),
         });
-        toast.success('Rule updated successfully');
+        toast.success('Regla actualizada exitosamente');
       } else {
         await ruleService.create({
           ...data,
@@ -172,12 +172,12 @@ export function Rules() {
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
-        toast.success('Rule created successfully');
+        toast.success('Regla creada exitosamente');
       }
       setIsModalOpen(false);
       loadRules(selectedWorkspace);
     } catch (error) {
-      toast.error('Failed to save rule');
+      toast.error('Error al guardar la regla');
       console.error(error);
     }
   };
@@ -187,23 +187,23 @@ export function Rules() {
       await ruleService.update(rule.id, {
         isActive: !rule.isActive,
       });
-      toast.success(`Rule ${rule.isActive ? 'disabled' : 'enabled'}`);
+      toast.success(`Regla ${rule.isActive ? 'desactivada' : 'activada'}`);
       loadRules(selectedWorkspace);
     } catch (error) {
-      toast.error('Failed to update rule status');
+      toast.error('Error al actualizar estado de la regla');
       console.error(error);
     }
   };
 
   const deleteRule = async (ruleId: string) => {
-    if (!confirm('Are you sure you want to delete this rule?')) return;
+    if (!confirm('¿Estás seguro de eliminar esta regla?')) return;
 
     try {
       await ruleService.delete(ruleId);
-      toast.success('Rule deleted successfully');
+      toast.success('Regla eliminada exitosamente');
       loadRules(selectedWorkspace);
     } catch (error) {
-      toast.error('Failed to delete rule');
+      toast.error('Error al eliminar la regla');
       console.error(error);
     }
   };
@@ -274,9 +274,9 @@ export function Rules() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Automation Rules</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Reglas de Automatización</h1>
           <p className="mt-2 text-gray-600">
-            Create performance-based rules with metrics calculations
+            Crea reglas basadas en rendimiento con cálculos de métricas
           </p>
         </div>
         <button
@@ -284,14 +284,14 @@ export function Rules() {
           className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
         >
           <Plus className="w-5 h-5" />
-          <span>Create Rule</span>
+          <span>Crear Regla</span>
         </button>
       </div>
 
       {/* Workspace Selector */}
       <div className="bg-white rounded-lg shadow p-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Select Workspace
+          Seleccionar Workspace
         </label>
         <select
           value={selectedWorkspace}
@@ -310,23 +310,23 @@ export function Rules() {
       {loading ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slack-purple mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading rules...</p>
+          <p className="mt-4 text-gray-600">Cargando reglas...</p>
         </div>
       ) : rules.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <Zap className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No automation rules yet
+            Sin reglas de automatización
           </h3>
           <p className="text-gray-600 mb-6">
-            Create your first rule to automate messages based on performance metrics
+            Crea tu primera regla para automatizar mensajes basados en métricas de rendimiento
           </p>
           <button
             onClick={openCreateModal}
             className="inline-flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
           >
             <Plus className="w-5 h-5" />
-            <span>Create First Rule</span>
+            <span>Crear Primera Regla</span>
           </button>
         </div>
       ) : (
@@ -349,7 +349,7 @@ export function Rules() {
                           : 'bg-gray-100 text-gray-800'
                       }`}
                     >
-                      {rule.isActive ? 'Active' : 'Inactive'}
+                      {rule.isActive ? 'Activa' : 'Inactiva'}
                     </span>
                   </div>
                   {rule.description && (
@@ -359,7 +359,7 @@ export function Rules() {
                   <div className="mt-4 space-y-2">
                     <div>
                       <span className="text-sm font-medium text-gray-700">
-                        Conditions:
+                        Condiciones:
                       </span>
                       <div className="mt-1 space-y-1">
                         {rule.conditions.map((condition, idx) => (
@@ -393,15 +393,15 @@ export function Rules() {
 
                     <div>
                       <span className="text-sm font-medium text-gray-700">
-                        Actions:
+                        Acciones:
                       </span>
                       <div className="mt-1 space-y-1">
                         {rule.actions.map((action, idx) => (
                           <div key={idx} className="text-sm text-gray-600">
                             {action.type === 'send_message' && (
                               <span>
-                                Send message to{' '}
-                                {action.recipients?.length || 0} recipient(s)
+                                Enviar mensaje a{' '}
+                                {action.recipients?.length || 0} destinatario(s)
                               </span>
                             )}
                           </div>
@@ -419,21 +419,21 @@ export function Rules() {
                         ? 'text-green-600 hover:bg-green-50'
                         : 'text-gray-400 hover:bg-gray-50'
                     }`}
-                    title={rule.isActive ? 'Disable rule' : 'Enable rule'}
+                    title={rule.isActive ? 'Desactivar regla' : 'Activar regla'}
                   >
                     <Power className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => openEditModal(rule)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Edit rule"
+                    title="Editar regla"
                   >
                     <Edit2 className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => deleteRule(rule.id)}
                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete rule"
+                    title="Eliminar regla"
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
@@ -451,7 +451,7 @@ export function Rules() {
             <form onSubmit={handleSubmit(onSubmit)}>
               <div className="p-6 border-b border-gray-200">
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {editingRule ? 'Edit Rule' : 'Create New Rule'}
+                  {editingRule ? 'Editar Regla' : 'Crear Nueva Regla'}
                 </h2>
               </div>
 
@@ -460,25 +460,25 @@ export function Rules() {
                 <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Rule Name *
+                      Nombre de Regla *
                     </label>
                     <input
                       {...register('name', { required: true })}
                       type="text"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="e.g., High Deal Conversion Alert"
+                      placeholder="Ej: Alerta de Alta Conversión de Negocios"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
+                      Descripción
                     </label>
                     <textarea
                       {...register('description')}
                       rows={2}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Describe what this rule does"
+                      placeholder="Describe qué hace esta regla"
                     />
                   </div>
 
@@ -503,14 +503,14 @@ export function Rules() {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      Conditions
+                      Condiciones
                     </h3>
                     <button
                       type="button"
                       onClick={addCondition}
                       className="text-sm text-slack-purple hover:text-opacity-80"
                     >
-                      + Add Condition
+                      + Agregar Condición
                     </button>
                   </div>
 
@@ -522,7 +522,7 @@ export function Rules() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-700">
-                            Condition {index + 1}
+                            Condición {index + 1}
                           </span>
                           {conditions.length > 1 && (
                             <button
@@ -538,7 +538,7 @@ export function Rules() {
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-sm text-gray-600 mb-1">
-                              Type
+                              Tipo
                             </label>
                             <select
                               value={condition.type}
@@ -548,12 +548,12 @@ export function Rules() {
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                             >
                               <option value="hubspot_property">
-                                HubSpot Property
+                                Propiedad HubSpot
                               </option>
                               <option value="metric_calculation">
-                                Metric Calculation
+                                Cálculo de Métrica
                               </option>
-                              <option value="time_based">Time Based</option>
+                              <option value="time_based">Basado en Tiempo</option>
                             </select>
                           </div>
 
@@ -561,7 +561,7 @@ export function Rules() {
                             <>
                               <div>
                                 <label className="block text-sm text-gray-600 mb-1">
-                                  Calculation Type
+                                  Tipo de Cálculo
                                 </label>
                                 <select
                                   value={condition.calculation?.type || 'sum'}
@@ -580,7 +580,7 @@ export function Rules() {
 
                               <div className="col-span-2">
                                 <label className="block text-sm text-gray-600 mb-1">
-                                  Metric Label
+                                  Etiqueta de Métrica
                                 </label>
                                 <input
                                   type="text"
@@ -588,14 +588,14 @@ export function Rules() {
                                   onChange={(e) =>
                                     updateCalculation(index, 'label', e.target.value)
                                   }
-                                  placeholder="e.g., Deal Conversion Rate"
+                                  placeholder="Ej: Tasa de Conversión de Negocios"
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                                 />
                               </div>
 
                               <div className="col-span-2">
                                 <label className="block text-sm text-gray-600 mb-1">
-                                  HubSpot Properties (comma-separated)
+                                  Propiedades HubSpot (separadas por coma)
                                 </label>
                                 <input
                                   type="text"
@@ -615,7 +615,7 @@ export function Rules() {
                           ) : (
                             <div>
                               <label className="block text-sm text-gray-600 mb-1">
-                                Property
+                                Propiedad
                               </label>
                               <select
                                 value={condition.property || ''}
@@ -624,7 +624,7 @@ export function Rules() {
                                 }
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                               >
-                                <option value="">Select property</option>
+                                <option value="">Seleccionar propiedad</option>
                                 {HUBSPOT_PROPERTIES.map((prop) => (
                                   <option key={prop.value} value={prop.value}>
                                     {prop.label} ({prop.category})
@@ -636,7 +636,7 @@ export function Rules() {
 
                           <div>
                             <label className="block text-sm text-gray-600 mb-1">
-                              Operator
+                              Operador
                             </label>
                             <select
                               value={condition.operator}
@@ -655,7 +655,7 @@ export function Rules() {
 
                           <div>
                             <label className="block text-sm text-gray-600 mb-1">
-                              Value
+                              Valor
                             </label>
                             <input
                               type="text"
@@ -675,13 +675,13 @@ export function Rules() {
                 {/* Actions */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Actions</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Acciones</h3>
                     <button
                       type="button"
                       onClick={addAction}
                       className="text-sm text-slack-purple hover:text-opacity-80"
                     >
-                      + Add Action
+                      + Agregar Acción
                     </button>
                   </div>
 
@@ -693,7 +693,7 @@ export function Rules() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-700">
-                            Action {index + 1}
+                            Acción {index + 1}
                           </span>
                           {actions.length > 1 && (
                             <button
@@ -709,7 +709,7 @@ export function Rules() {
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-sm text-gray-600 mb-1">
-                              Action Type
+                              Tipo de Acción
                             </label>
                             <select
                               value={action.type}
@@ -718,9 +718,9 @@ export function Rules() {
                               }
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                             >
-                              <option value="send_message">Send Message</option>
-                              <option value="update_hubspot">Update HubSpot</option>
-                              <option value="webhook">Call Webhook</option>
+                              <option value="send_message">Enviar Mensaje</option>
+                              <option value="update_hubspot">Actualizar HubSpot</option>
+                              <option value="webhook">Llamar Webhook</option>
                             </select>
                           </div>
 
@@ -728,7 +728,7 @@ export function Rules() {
                             <>
                               <div>
                                 <label className="block text-sm text-gray-600 mb-1">
-                                  Template
+                                  Plantilla
                                 </label>
                                 <select
                                   value={action.templateId || ''}
@@ -737,7 +737,7 @@ export function Rules() {
                                   }
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                                 >
-                                  <option value="">Select template</option>
+                                  <option value="">Seleccionar plantilla</option>
                                   {templates.map((template) => (
                                     <option key={template.id} value={template.id}>
                                       {template.name}
@@ -748,7 +748,7 @@ export function Rules() {
 
                               <div className="col-span-2">
                                 <label className="block text-sm text-gray-600 mb-1">
-                                  Custom Message (overrides template)
+                                  Mensaje Personalizado (reemplaza plantilla)
                                 </label>
                                 <textarea
                                   value={action.customMessage || ''}
@@ -756,7 +756,7 @@ export function Rules() {
                                     updateAction(index, 'customMessage', e.target.value)
                                   }
                                   rows={2}
-                                  placeholder="e.g., Conversion rate is {{metric_value}}%"
+                                  placeholder="Ej: La tasa de conversión es {{metric_value}}%"
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                                 />
                               </div>
@@ -776,7 +776,7 @@ export function Rules() {
                                     className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
                                   />
                                   <span className="text-sm text-gray-700">
-                                    Include calculated metrics in message
+                                    Incluir métricas calculadas en el mensaje
                                   </span>
                                 </label>
                               </div>
@@ -795,13 +795,13 @@ export function Rules() {
                   onClick={() => setIsModalOpen(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
                 >
-                  {editingRule ? 'Update Rule' : 'Create Rule'}
+                  {editingRule ? 'Actualizar Regla' : 'Crear Regla'}
                 </button>
               </div>
             </form>

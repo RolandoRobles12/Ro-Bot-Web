@@ -42,10 +42,10 @@ export function Dashboard() {
       <div className="text-center py-12">
         <MessageSquare className="w-16 h-16 text-gray-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          No Workspace Selected
+          Sin Workspace Seleccionado
         </h2>
         <p className="text-gray-600">
-          Please select a workspace from the header to continue.
+          Por favor selecciona un workspace desde el encabezado para continuar.
         </p>
       </div>
     );
@@ -53,14 +53,14 @@ export function Dashboard() {
 
   const stats = [
     {
-      name: 'Upcoming Messages',
+      name: 'Mensajes Próximos',
       value: upcomingMessages.length,
       icon: Calendar,
       color: 'text-slack-blue',
       bgColor: 'bg-slack-blue/10',
     },
     {
-      name: 'Sent Today',
+      name: 'Enviados Hoy',
       value: recentHistory.filter(
         (h) =>
           h.sentAt.toDate().toDateString() === new Date().toDateString() &&
@@ -71,7 +71,7 @@ export function Dashboard() {
       bgColor: 'bg-slack-green/10',
     },
     {
-      name: 'Failed Today',
+      name: 'Fallidos Hoy',
       value: recentHistory.filter(
         (h) =>
           h.sentAt.toDate().toDateString() === new Date().toDateString() &&
@@ -87,9 +87,9 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Panel</h1>
         <p className="text-gray-600 mt-1">
-          Overview of your Slack notifications for {selectedWorkspace.name}
+          Resumen de tus notificaciones de Slack para {selectedWorkspace.name}
         </p>
       </div>
 
@@ -116,8 +116,8 @@ export function Dashboard() {
         {/* Upcoming Messages */}
         <Card>
           <CardHeader>
-            <CardTitle>Upcoming Messages</CardTitle>
-            <CardDescription>Next scheduled messages</CardDescription>
+            <CardTitle>Mensajes Próximos</CardTitle>
+            <CardDescription>Próximos mensajes programados</CardDescription>
           </CardHeader>
 
           {loading ? (
@@ -127,7 +127,7 @@ export function Dashboard() {
           ) : upcomingMessages.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Clock className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-              <p>No upcoming messages</p>
+              <p>No hay mensajes próximos</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -157,8 +157,8 @@ export function Dashboard() {
         {/* Recent Activity */}
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest sent messages</CardDescription>
+            <CardTitle>Actividad Reciente</CardTitle>
+            <CardDescription>Últimos mensajes enviados</CardDescription>
           </CardHeader>
 
           {loading ? (
@@ -168,7 +168,7 @@ export function Dashboard() {
           ) : recentHistory.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-              <p>No messages sent yet</p>
+              <p>Aún no se han enviado mensajes</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -183,7 +183,7 @@ export function Dashboard() {
                         {item.content}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
-                        To: {item.recipients.map((r) => r.name).join(', ')}
+                        Para: {item.recipients.map((r) => r.name).join(', ')}
                       </p>
                     </div>
                     <span
