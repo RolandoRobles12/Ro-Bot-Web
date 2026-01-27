@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { Plus, Trash2, Edit2, Power, Calculator, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -63,7 +63,7 @@ export function Rules() {
   const [editingRule, setEditingRule] = useState<MessageRule | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { register, control, handleSubmit, reset, watch, setValue } = useForm<RuleFormData>({
+  const { register, handleSubmit, reset, watch, setValue } = useForm<RuleFormData>({
     defaultValues: {
       conditions: [{
         type: 'hubspot_property',
