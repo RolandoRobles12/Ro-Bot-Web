@@ -118,18 +118,32 @@ export interface MessageRule {
   updatedAt: Timestamp;
 }
 
+export type CalculationType = 'sum' | 'average' | 'divide' | 'multiply' | 'subtract' | 'count';
+
+export interface MetricCalculation {
+  type: CalculationType;
+  properties: string[]; // HubSpot properties to use in calculation
+  label: string; // e.g., "Deal Conversion Rate"
+  format?: 'number' | 'percentage' | 'currency';
+}
+
 export interface RuleCondition {
-  type: 'hubspot_property' | 'time_based' | 'custom';
+  type: 'hubspot_property' | 'time_based' | 'metric_calculation' | 'custom';
   property?: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than';
+  operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'between';
   value: any;
+  secondValue?: any; // For "between" operator
+  calculation?: MetricCalculation; // For metric-based conditions
 }
 
 export interface RuleAction {
   type: 'send_message' | 'update_hubspot' | 'webhook';
   templateId?: string;
   recipients?: MessageRecipient[];
+  sender?: SenderConfig;
   webhookUrl?: string;
+  customMessage?: string; // Override template with dynamic message
+  includeMetrics?: boolean; // Include calculated metrics in message
 }
 
 export type MessageStatus = 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
