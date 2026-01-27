@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { Plus, Trash2, Edit2, Users, TrendingUp, Target } from 'lucide-react';
+import { Plus, Trash2, Edit2, Users, Target, Activity, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { salesUserService, workspaceService } from '@/services/firestore';
 import { useAuthStore } from '@/store/authStore';
 import type { SalesUser, SalesUserType, SlackWorkspace } from '@/types';
@@ -42,6 +43,8 @@ export function Teams() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SalesUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [calculatingMetrics, setCalculatingMetrics] = useState<Set<string>>(new Set());
+  const [calculatingAll, setCalculatingAll] = useState(false);
 
   const { register, handleSubmit, reset, watch } = useForm<TeamFormData>();
 
@@ -80,6 +83,66 @@ export function Teams() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const calculateMetricsForUser = async (salesUser: SalesUser) => {
+    setCalculatingMetrics(prev => new Set(prev).add(salesUser.id));
+
+    try {
+      const functions = getFunctions();
+      const calculateSalesMetrics = httpsCallable(functions, 'calculateSalesMetrics');
+
+      // Calculate week start and end dates
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+
+      const result = await calculateSalesMetrics({
+        salesUserId: salesUser.id,
+        startDate: startOfWeek.toISOString(),
+        endDate: endOfWeek.toISOString(),
+      });
+
+      const data = result.data as any;
+
+      if (data.success) {
+        toast.success(`Métricas calculadas para ${salesUser.nombre}`, {
+          description: `Solicitudes: ${data.metrics.solicitudes} | Ventas: $${data.metrics.ventasReales.toLocaleString()} | Categoría: ${data.metrics.categoria}`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error calculando métricas:', error);
+      toast.error(`Error calculando métricas para ${salesUser.nombre}`, {
+        description: error.message || 'Error desconocido',
+      });
+    } finally {
+      setCalculatingMetrics(prev => {
+        const next = new Set(prev);
+        next.delete(salesUser.id);
+        return next;
+      });
+    }
+  };
+
+  const calculateAllMetrics = async () => {
+    setCalculatingAll(true);
+
+    try {
+      const promises = filteredUsers.map(user => calculateMetricsForUser(user));
+      await Promise.all(promises);
+      toast.success('Métricas calculadas para todos los usuarios');
+    } catch (error) {
+      toast.error('Error calculando métricas');
+      console.error(error);
+    } finally {
+      setCalculatingAll(false);
     }
   };
 
@@ -210,13 +273,32 @@ export function Teams() {
             Gestiona usuarios, metas y métricas de desempeño
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Agregar Usuario</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={calculateAllMetrics}
+            disabled={calculatingAll || filteredUsers.length === 0}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {calculatingAll ? (
+              <>
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                <span>Calculando...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="w-5 h-5" />
+                <span>Calcular Métricas</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={openCreateModal}
+            className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Agregar Usuario</span>
+          </button>
+        </div>
       </div>
 
       {/* Workspace & Type Filters */}
@@ -373,6 +455,18 @@ export function Teams() {
                 </div>
 
                 <div className="flex items-center space-x-2 ml-4">
+                  <button
+                    onClick={() => calculateMetricsForUser(salesUser)}
+                    disabled={calculatingMetrics.has(salesUser.id)}
+                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Calcular métricas"
+                  >
+                    {calculatingMetrics.has(salesUser.id) ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Activity className="w-5 h-5" />
+                    )}
+                  </button>
                   <button
                     onClick={() => openEditModal(salesUser)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
