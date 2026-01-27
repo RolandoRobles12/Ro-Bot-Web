@@ -25,6 +25,11 @@ import {
   MessageHistory,
   HubSpotConnection,
   MessageRule,
+  SalesUser,
+  MetricaDesempeno,
+  TarjetaTactica,
+  SeguimientoTarjeta,
+  CoachingSession,
 } from '@/types';
 
 // Generic Firestore helpers
@@ -277,5 +282,162 @@ export const ruleService = {
       where('workspaceId', '==', workspaceId),
       where('isActive', '==', true),
       orderBy('createdAt', 'desc')
+    ),
+};
+
+// ==========================================================================
+// =                     SALES COACHING SYSTEM SERVICES                     =
+// ==========================================================================
+
+// Sales User services
+export const salesUserService = {
+  get: (userId: string) => getDocument<SalesUser>('sales_users', userId),
+  getByWorkspace: (workspaceId: string) =>
+    getDocuments<SalesUser>(
+      'sales_users',
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('nombre', 'asc')
+    ),
+  getByType: (workspaceId: string, tipo: string) =>
+    getDocuments<SalesUser>(
+      'sales_users',
+      where('workspaceId', '==', workspaceId),
+      where('tipo', '==', tipo),
+      where('isActive', '==', true),
+      orderBy('nombre', 'asc')
+    ),
+  create: (data: Omit<SalesUser, 'id'>) =>
+    createDocument<SalesUser>('sales_users', data),
+  update: (userId: string, data: Partial<SalesUser>) =>
+    updateDocument('sales_users', userId, data),
+  delete: (userId: string) => deleteDocument('sales_users', userId),
+  subscribe: (workspaceId: string, callback: (users: SalesUser[]) => void) =>
+    subscribeToCollection<SalesUser>(
+      'sales_users',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('nombre', 'asc')
+    ),
+};
+
+// Metricas Desempeño services
+export const metricasService = {
+  get: (metricaId: string) =>
+    getDocument<MetricaDesempeno>('metricas_desempeno', metricaId),
+  getByUser: (userId: string, limitCount = 30) =>
+    getDocuments<MetricaDesempeno>(
+      'metricas_desempeno',
+      where('userId', '==', userId),
+      orderBy('fecha', 'desc'),
+      limit(limitCount)
+    ),
+  getByUserDateRange: (userId: string, startDate: Timestamp, endDate: Timestamp) =>
+    getDocuments<MetricaDesempeno>(
+      'metricas_desempeno',
+      where('userId', '==', userId),
+      where('fecha', '>=', startDate),
+      where('fecha', '<=', endDate),
+      orderBy('fecha', 'desc')
+    ),
+  getByWorkspace: (workspaceId: string, limitCount = 100) =>
+    getDocuments<MetricaDesempeno>(
+      'metricas_desempeno',
+      where('workspaceId', '==', workspaceId),
+      orderBy('fecha', 'desc'),
+      limit(limitCount)
+    ),
+  create: (data: Omit<MetricaDesempeno, 'id'>) =>
+    createDocument<MetricaDesempeno>('metricas_desempeno', data),
+  update: (metricaId: string, data: Partial<MetricaDesempeno>) =>
+    updateDocument('metricas_desempeno', metricaId, data),
+  subscribe: (userId: string, callback: (metricas: MetricaDesempeno[]) => void) =>
+    subscribeToCollection<MetricaDesempeno>(
+      'metricas_desempeno',
+      callback,
+      where('userId', '==', userId),
+      orderBy('fecha', 'desc'),
+      limit(30)
+    ),
+};
+
+// Tarjetas Tacticas services
+export const tarjetaTacticaService = {
+  get: (tarjetaId: string) =>
+    getDocument<TarjetaTactica>('tarjetas_tacticas', tarjetaId),
+  getAll: () =>
+    getDocuments<TarjetaTactica>(
+      'tarjetas_tacticas',
+      where('isActive', '==', true),
+      orderBy('numero', 'asc')
+    ),
+  create: (data: Omit<TarjetaTactica, 'id'>) =>
+    createDocument<TarjetaTactica>('tarjetas_tacticas', data),
+  update: (tarjetaId: string, data: Partial<TarjetaTactica>) =>
+    updateDocument('tarjetas_tacticas', tarjetaId, data),
+};
+
+// Seguimiento Tarjeta services
+export const seguimientoTarjetaService = {
+  get: (seguimientoId: string) =>
+    getDocument<SeguimientoTarjeta>('seguimientos_tarjeta', seguimientoId),
+  getByUser: (userId: string, limitCount = 50) =>
+    getDocuments<SeguimientoTarjeta>(
+      'seguimientos_tarjeta',
+      where('userId', '==', userId),
+      orderBy('fecha', 'desc'),
+      limit(limitCount)
+    ),
+  getByUserToday: (userId: string, startOfDay: Timestamp) =>
+    getDocuments<SeguimientoTarjeta>(
+      'seguimientos_tarjeta',
+      where('userId', '==', userId),
+      where('fecha', '>=', startOfDay),
+      orderBy('fecha', 'desc')
+    ),
+  create: (data: Omit<SeguimientoTarjeta, 'id'>) =>
+    createDocument<SeguimientoTarjeta>('seguimientos_tarjeta', data),
+  update: (seguimientoId: string, data: Partial<SeguimientoTarjeta>) =>
+    updateDocument('seguimientos_tarjeta', seguimientoId, data),
+};
+
+// Coaching Session services
+export const coachingSessionService = {
+  get: (sessionId: string) =>
+    getDocument<CoachingSession>('coaching_sessions', sessionId),
+  getByUser: (userId: string) =>
+    getDocuments<CoachingSession>(
+      'coaching_sessions',
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    ),
+  getByWorkspace: (workspaceId: string, includeResolved = false) => {
+    const constraints: QueryConstraint[] = [
+      where('workspaceId', '==', workspaceId),
+      orderBy('createdAt', 'desc'),
+      limit(100),
+    ];
+    if (!includeResolved) {
+      constraints.splice(1, 0, where('resuelta', '==', false));
+    }
+    return getDocuments<CoachingSession>('coaching_sessions', ...constraints);
+  },
+  create: (data: Omit<CoachingSession, 'id'>) =>
+    createDocument<CoachingSession>('coaching_sessions', data),
+  update: (sessionId: string, data: Partial<CoachingSession>) =>
+    updateDocument('coaching_sessions', sessionId, data),
+  subscribe: (
+    workspaceId: string,
+    callback: (sessions: CoachingSession[]) => void
+  ) =>
+    subscribeToCollection<CoachingSession>(
+      'coaching_sessions',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      where('resuelta', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(50)
     ),
 };

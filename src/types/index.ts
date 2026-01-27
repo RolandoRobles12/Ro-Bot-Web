@@ -221,3 +221,106 @@ export interface AppSettings {
   notifications: NotificationSettings;
   updatedAt: Timestamp;
 }
+
+// ==========================================================================
+// =                     SALES COACHING SYSTEM TYPES                        =
+// ==========================================================================
+
+export type SalesUserType = 'kiosco' | 'atn' | 'ba' | 'alianza';
+
+export type CategoriaDesempeno =
+  | 'critico'      // 0 - Desempeño crítico, requiere intervención inmediata
+  | 'alerta'       // 1 - Alerta, muy por debajo del objetivo
+  | 'preocupante'  // 2 - Preocupante, necesita mejorar
+  | 'rezagado'     // 3 - Rezagado, ligeramente por debajo
+  | 'en_linea'     // 4 - En línea con objetivos
+  | 'destacado'    // 5 - Destacado, por encima del objetivo
+  | 'excepcional'; // 6 - Excepcional, muy por encima
+
+export interface SalesUser {
+  id: string;
+  workspaceId: string;
+  nombre: string;
+  tipo: SalesUserType;
+  hubspotOwnerId: string;
+  slackUserId: string;
+  slackChannel: string;
+  metaSolicitudes: number;      // Meta semanal de solicitudes
+  metaVentas: number;           // Meta semanal de ventas en pesos
+  pipeline?: string;            // HubSpot pipeline ID (default o específico)
+  equipo?: string;              // Para kioscos: nombre del equipo
+  gerenteId?: string;           // Para kioscos: ID del gerente
+  promotores?: string[];        // Para kioscos: IDs de promotores
+  isActive: boolean;
+  createdBy: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface MetricaDesempeno {
+  id: string;
+  userId: string;
+  workspaceId: string;
+  fecha: Timestamp;             // Fecha del cálculo
+  periodoInicio: Timestamp;     // Inicio del período (semana)
+  periodoFin: Timestamp;        // Fin del período (semana)
+  solicitudes: number;          // Total de solicitudes creadas
+  ventasAvanzadas: number;      // Ventas en etapas avanzadas
+  ventasReales: number;         // Ventas formalizadas (desembolsadas)
+  progresoSolicitudes: number;  // % de avance vs meta
+  progresoVentas: number;       // % de avance vs meta
+  progresoEsperado: number;     // % esperado según día de la semana
+  categoria: CategoriaDesempeno;
+  mensajeGenerado?: string;     // Mensaje personalizado por IA
+  notificacionEnviada: boolean;
+  createdAt: Timestamp;
+}
+
+export interface TarjetaTactica {
+  id: string;
+  numero: number;
+  nombre: string;
+  emoji: string;
+  horarioInicio: string;        // HH:mm
+  horarioFin: string;           // HH:mm
+  horarioSeguimiento: string;   // HH:mm - cuando se envía el seguimiento
+  bloque: 'matutino' | 'vespertino' | 'apoyo';
+  objetivo: string;
+  metaAbordados?: number;
+  metaLeads?: number;
+  metaVideollamadas?: number;
+  descripcion: string;
+  isActive: boolean;
+}
+
+export interface SeguimientoTarjeta {
+  id: string;
+  userId: string;              // SalesUser BA
+  tarjetaId: string;           // TarjetaTactica
+  fecha: Timestamp;
+  videollamadasDia: number;
+  videollamadaSemana: number;
+  feedback?: 'excelente' | 'regular' | 'mal';
+  notas?: string;
+  mensajeEnviado: boolean;
+  createdAt: Timestamp;
+}
+
+export interface CoachingSession {
+  id: string;
+  userId: string;
+  workspaceId: string;
+  tipo: 'automatico' | 'solicitado' | 'programado';
+  categoria: CategoriaDesempeno;
+  metricas: {
+    solicitudes: number;
+    ventas: number;
+    progreso: number;
+  };
+  mensajeGenerado: string;
+  respuestaUsuario?: string;
+  coachId?: string;            // Usuario que atendió (si aplica)
+  resuelta: boolean;
+  createdAt: Timestamp;
+  resolvedAt?: Timestamp;
+}

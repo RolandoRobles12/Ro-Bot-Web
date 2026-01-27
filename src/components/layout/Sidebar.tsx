@@ -20,8 +20,8 @@ const navigation = [
   { name: 'Scheduled', href: '/scheduled', icon: Calendar, roles: ['viewer', 'editor', 'admin'] },
   { name: 'History', href: '/history', icon: History, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Rules', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },
+  { name: 'Teams', href: '/teams', icon: Users, roles: ['admin'] },
   { name: 'Workspaces', href: '/workspaces', icon: MessageSquare, roles: ['admin'] },
-  { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['viewer', 'editor', 'admin'] },
 ];
 

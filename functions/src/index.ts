@@ -451,3 +451,259 @@ export const processScheduledMessages = functions.pubsub
       return null;
     }
   });
+
+// ==========================================================================
+// =                     SALES COACHING SYSTEM FUNCTIONS                    =
+// ==========================================================================
+
+interface HubSpotMetricsData {
+  salesUserId: string;
+  startDate: string; // ISO format: YYYY-MM-DDTHH:mm:ss.sssZ
+  endDate: string;
+}
+
+interface CategoriaDesempeno {
+  solicitudes: 'critico' | 'alerta' | 'preocupante' | 'rezagado' | 'en_linea' | 'destacado' | 'excepcional';
+  ventas: 'critico' | 'alerta' | 'preocupante' | 'rezagado' | 'en_linea' | 'destacado' | 'excepcional';
+  final: 'critico' | 'alerta' | 'preocupante' | 'rezagado' | 'en_linea' | 'destacado' | 'excepcional';
+}
+
+/**
+ * Calculate sales metrics from HubSpot for a sales user
+ * Queries HubSpot API for deals and calculates performance metrics
+ */
+export const calculateSalesMetrics = functions.https.onCall(
+  async (data: HubSpotMetricsData, context) => {
+    try {
+      const { salesUserId, startDate, endDate } = data;
+
+      // Get sales user
+      const salesUserDoc = await db.collection('sales_users').doc(salesUserId).get();
+      if (!salesUserDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Sales user not found');
+      }
+
+      const salesUser = salesUserDoc.data();
+      if (!salesUser) {
+        throw new functions.https.HttpsError('not-found', 'Sales user data not found');
+      }
+
+      // Get HubSpot connection for the workspace
+      const hubspotConnections = await db
+        .collection('hubspot_connections')
+        .where('workspaceId', '==', salesUser.workspaceId)
+        .where('isActive', '==', true)
+        .limit(1)
+        .get();
+
+      if (hubspotConnections.empty) {
+        throw new functions.https.HttpsError(
+          'not-found',
+          'No active HubSpot connection found for this workspace'
+        );
+      }
+
+      const hubspotConnection = hubspotConnections.docs[0].data();
+      const accessToken = hubspotConnection.accessToken;
+
+      if (!accessToken) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'No HubSpot access token available'
+        );
+      }
+
+      const pipeline = salesUser.pipeline || 'default';
+      const ownerIds = [salesUser.hubspotOwnerId];
+
+      // Query HubSpot for deals
+      const dealsResponse = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/deals/search',
+        {
+          filterGroups: [
+            {
+              filters: [
+                { propertyName: 'createdate', operator: 'GTE', value: startDate },
+                { propertyName: 'createdate', operator: 'LTE', value: endDate },
+                { propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds },
+                { propertyName: 'pipeline', operator: 'EQ', value: pipeline },
+              ],
+            },
+          ],
+          properties: ['amount', 'dealstage', 'hs_v2_date_entered_33823866'],
+          limit: 100,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const deals = dealsResponse.data.results || [];
+
+      // Calculate metrics
+      const solicitudes = deals.length;
+      let ventasAvanzadas = 0;
+      let ventasReales = 0;
+
+      // Advanced stages (varies by pipeline)
+      const advancedStages =
+        pipeline === '76732496'
+          ? ['146251806', '146251807', '150228300']
+          : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097'];
+
+      deals.forEach((deal: any) => {
+        const amount = parseFloat(deal.properties.amount || '0');
+        const dealstage = deal.properties.dealstage;
+        const dateEnteredDesembolso = deal.properties.hs_v2_date_entered_33823866;
+
+        // Ventas avanzadas: deals in advanced stages
+        if (advancedStages.includes(dealstage)) {
+          ventasAvanzadas += amount;
+        }
+
+        // Ventas reales: deals that entered "desembolso" stage
+        if (dateEnteredDesembolso) {
+          const desembolsoDate = new Date(dateEnteredDesembolso);
+          const startDateObj = new Date(startDate);
+          const endDateObj = new Date(endDate);
+
+          if (desembolsoDate >= startDateObj && desembolsoDate <= endDateObj) {
+            ventasReales += amount;
+          }
+        }
+      });
+
+      // Calculate progress percentages
+      const progresoSolicitudes =
+        salesUser.metaSolicitudes > 0
+          ? Math.round((solicitudes / salesUser.metaSolicitudes) * 100)
+          : 0;
+
+      const progresoVentas =
+        salesUser.metaVentas > 0
+          ? Math.round((ventasReales / salesUser.metaVentas) * 100)
+          : 0;
+
+      // Calculate expected progress based on day of week
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+      const hour = now.getHours();
+      const isMorning = hour < 12;
+
+      let progresoEsperado = 0;
+      switch (dayOfWeek) {
+        case 1: progresoEsperado = isMorning ? 5 : 15; break;  // Monday
+        case 2: progresoEsperado = isMorning ? 25 : 35; break; // Tuesday
+        case 3: progresoEsperado = isMorning ? 45 : 55; break; // Wednesday
+        case 4: progresoEsperado = isMorning ? 65 : 75; break; // Thursday
+        case 5: progresoEsperado = isMorning ? 80 : 90; break; // Friday
+        case 6: progresoEsperado = isMorning ? 95 : 100; break; // Saturday
+        default: progresoEsperado = 100; // Sunday
+      }
+
+      // Determine performance categories
+      const categoria = determinarCategoria(progresoVentas, progresoSolicitudes, progresoEsperado);
+
+      // Save metrics to Firestore
+      await db.collection('metricas_desempeno').add({
+        userId: salesUserId,
+        workspaceId: salesUser.workspaceId,
+        fecha: admin.firestore.Timestamp.now(),
+        periodoInicio: admin.firestore.Timestamp.fromDate(new Date(startDate)),
+        periodoFin: admin.firestore.Timestamp.fromDate(new Date(endDate)),
+        solicitudes,
+        ventasAvanzadas,
+        ventasReales,
+        progresoSolicitudes,
+        progresoVentas,
+        progresoEsperado,
+        categoria: categoria.final,
+        notificacionEnviada: false,
+        createdAt: admin.firestore.Timestamp.now(),
+      });
+
+      return {
+        success: true,
+        metrics: {
+          solicitudes,
+          ventasAvanzadas,
+          ventasReales,
+          progresoSolicitudes,
+          progresoVentas,
+          progresoEsperado,
+          categoria: categoria.final,
+        },
+      };
+    } catch (error: any) {
+      console.error('Error calculating sales metrics:', error);
+      throw new functions.https.HttpsError('internal', error.message);
+    }
+  }
+);
+
+/**
+ * Helper function to determine performance category
+ */
+function determinarCategoria(
+  progresoVentas: number,
+  progresoSolicitudes: number,
+  progresoEsperado: number
+): CategoriaDesempeno {
+  const determinarCategoriMetrica = (progreso: number, esperado: number) => {
+    const diferencia = progreso - esperado;
+
+    if (diferencia <= -30) return 'critico';
+    if (diferencia <= -20) return 'alerta';
+    if (diferencia <= -10) return 'preocupante';
+    if (diferencia <= -5) return 'rezagado';
+    if (diferencia <= 5) return 'en_linea';
+    if (diferencia <= 15) return 'destacado';
+    return 'excepcional';
+  };
+
+  let catVentas = determinarCategoriMetrica(progresoVentas, progresoEsperado);
+  const catSolicitudes = determinarCategoriMetrica(progresoSolicitudes, progresoEsperado);
+
+  // Adjust sales category if very close to goal
+  if (progresoVentas >= 95) {
+    if (catVentas === 'critico' || catVentas === 'alerta') {
+      catVentas = 'preocupante';
+    }
+  } else if (progresoVentas >= 80) {
+    if (catVentas === 'critico') {
+      catVentas = 'alerta';
+    }
+  }
+
+  // Determine final category based on both metrics
+  let categoriaFinal: typeof catVentas = catVentas;
+
+  if (catVentas === 'excepcional') {
+    categoriaFinal = 'destacado';
+  } else if (catVentas === 'destacado') {
+    if (catSolicitudes === 'critico' || catSolicitudes === 'alerta') {
+      categoriaFinal = 'rezagado';
+    } else {
+      categoriaFinal = 'en_linea';
+    }
+  } else if (catVentas === 'en_linea') {
+    if (catSolicitudes === 'critico') {
+      categoriaFinal = 'preocupante';
+    } else if (catSolicitudes === 'alerta' || catSolicitudes === 'preocupante') {
+      categoriaFinal = 'rezagado';
+    }
+  } else if (catVentas === 'rezagado') {
+    if (catSolicitudes === 'critico' || catSolicitudes === 'alerta') {
+      categoriaFinal = 'preocupante';
+    }
+  }
+
+  return {
+    solicitudes: catSolicitudes,
+    ventas: catVentas,
+    final: categoriaFinal,
+  };
+}
