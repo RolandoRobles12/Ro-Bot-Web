@@ -30,6 +30,8 @@ import {
   TarjetaTactica,
   SeguimientoTarjeta,
   CoachingSession,
+  MessageCampaign,
+  CampaignExecution,
 } from '@/types';
 
 // Generic Firestore helpers
@@ -505,5 +507,77 @@ export const coachingSessionService = {
       where('resuelta', '==', false),
       orderBy('createdAt', 'desc'),
       limit(50)
+    ),
+};
+
+// ==========================================================================
+// =                  NO-CODE MESSAGE SCHEDULER SERVICES                    =
+// ==========================================================================
+
+// Campaign services
+export const campaignService = {
+  get: (campaignId: string) =>
+    getDocument<MessageCampaign>('campaigns', campaignId),
+  getByWorkspace: (workspaceId: string) =>
+    getDocuments<MessageCampaign>(
+      'campaigns',
+      where('workspaceId', '==', workspaceId),
+      orderBy('createdAt', 'desc')
+    ),
+  getActive: (workspaceId: string) =>
+    getDocuments<MessageCampaign>(
+      'campaigns',
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('createdAt', 'desc')
+    ),
+  create: (data: Omit<MessageCampaign, 'id'>) =>
+    createDocument<MessageCampaign>('campaigns', data),
+  update: (campaignId: string, data: Partial<MessageCampaign>) =>
+    updateDocument('campaigns', campaignId, data),
+  delete: (campaignId: string) => deleteDocument('campaigns', campaignId),
+  subscribe: (
+    workspaceId: string,
+    callback: (campaigns: MessageCampaign[]) => void
+  ) =>
+    subscribeToCollection<MessageCampaign>(
+      'campaigns',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      orderBy('createdAt', 'desc')
+    ),
+};
+
+// Campaign Execution services
+export const campaignExecutionService = {
+  get: (executionId: string) =>
+    getDocument<CampaignExecution>('campaign_executions', executionId),
+  getByCampaign: (campaignId: string, limitCount = 50) =>
+    getDocuments<CampaignExecution>(
+      'campaign_executions',
+      where('campaignId', '==', campaignId),
+      orderBy('executedAt', 'desc'),
+      limit(limitCount)
+    ),
+  getByWorkspace: (workspaceId: string, limitCount = 100) =>
+    getDocuments<CampaignExecution>(
+      'campaign_executions',
+      where('workspaceId', '==', workspaceId),
+      orderBy('executedAt', 'desc'),
+      limit(limitCount)
+    ),
+  create: (data: Omit<CampaignExecution, 'id'>) =>
+    createDocument<CampaignExecution>('campaign_executions', data),
+  subscribe: (
+    campaignId: string,
+    callback: (executions: CampaignExecution[]) => void,
+    limitCount = 20
+  ) =>
+    subscribeToCollection<CampaignExecution>(
+      'campaign_executions',
+      callback,
+      where('campaignId', '==', campaignId),
+      orderBy('executedAt', 'desc'),
+      limit(limitCount)
     ),
 };
