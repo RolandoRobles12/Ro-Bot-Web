@@ -5,9 +5,10 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
+  onClick?: () => void;
 }
 
-export function Card({ children, className, padding = 'md' }: CardProps) {
+export function Card({ children, className, padding = 'md', onClick }: CardProps) {
   const paddingClasses = {
     none: '',
     sm: 'p-3',
@@ -20,8 +21,10 @@ export function Card({ children, className, padding = 'md' }: CardProps) {
       className={clsx(
         'bg-white rounded-lg border border-gray-200 shadow-sm',
         paddingClasses[padding],
+        onClick && 'cursor-pointer',
         className
       )}
+      onClick={onClick}
     >
       {children}
     </div>
