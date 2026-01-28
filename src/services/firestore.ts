@@ -34,6 +34,8 @@ import {
   CampaignExecution,
   CustomHubSpotProperty,
   WorkspaceSettings,
+  Pipeline,
+  DataSource,
 } from '@/types';
 
 // Generic Firestore helpers
@@ -677,4 +679,84 @@ export const workspaceSettingsService = {
       }
     });
   },
+};
+
+// Pipeline services
+export const pipelineService = {
+  get: (pipelineId: string) =>
+    getDocument<Pipeline>('pipelines', pipelineId),
+  getByWorkspace: (workspaceId: string) =>
+    getDocuments<Pipeline>(
+      'pipelines',
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
+  getAll: () =>
+    getDocuments<Pipeline>(
+      'pipelines',
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
+  create: (data: Omit<Pipeline, 'id'>) =>
+    createDocument<Pipeline>('pipelines', data),
+  update: (pipelineId: string, data: Partial<Pipeline>) =>
+    updateDocument('pipelines', pipelineId, data),
+  delete: (pipelineId: string) =>
+    deleteDocument('pipelines', pipelineId),
+  subscribe: (
+    workspaceId: string,
+    callback: (pipelines: Pipeline[]) => void
+  ) =>
+    subscribeToCollection<Pipeline>(
+      'pipelines',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
+};
+
+// DataSource services
+export const dataSourceService = {
+  get: (dataSourceId: string) =>
+    getDocument<DataSource>('data_sources', dataSourceId),
+  getByWorkspace: (workspaceId: string) =>
+    getDocuments<DataSource>(
+      'data_sources',
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
+  getByType: (workspaceId: string, type: string) =>
+    getDocuments<DataSource>(
+      'data_sources',
+      where('workspaceId', '==', workspaceId),
+      where('type', '==', type),
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
+  getAll: () =>
+    getDocuments<DataSource>(
+      'data_sources',
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
+  create: (data: Omit<DataSource, 'id'>) =>
+    createDocument<DataSource>('data_sources', data),
+  update: (dataSourceId: string, data: Partial<DataSource>) =>
+    updateDocument('data_sources', dataSourceId, data),
+  delete: (dataSourceId: string) =>
+    deleteDocument('data_sources', dataSourceId),
+  subscribe: (
+    workspaceId: string,
+    callback: (dataSources: DataSource[]) => void
+  ) =>
+    subscribeToCollection<DataSource>(
+      'data_sources',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('name', 'asc')
+    ),
 };
