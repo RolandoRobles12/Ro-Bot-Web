@@ -222,6 +222,45 @@ export interface AppSettings {
   updatedAt: Timestamp;
 }
 
+/**
+ * Custom HubSpot property configured by the user.
+ * Used in Rules and other places instead of hardcoded properties.
+ */
+export interface CustomHubSpotProperty {
+  id: string;
+  workspaceId: string;
+  name: string;                 // Internal property name in HubSpot
+  label: string;                // Display label
+  category: 'deal' | 'contact' | 'company' | 'custom';
+  type: 'string' | 'number' | 'date' | 'boolean' | 'enum';
+  enumOptions?: string[];       // For enum type
+  description?: string;
+  isActive: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * Workspace-level settings for the app.
+ */
+export interface WorkspaceSettings {
+  id: string;
+  workspaceId: string;
+  // HubSpot configuration
+  defaultPipeline?: string;
+  advancedDealStages?: string[];  // Stages considered "advanced"
+  closedDealStages?: string[];    // Stages considered "closed/won"
+  // Notifications
+  notifyOnCampaignSuccess: boolean;
+  notifyOnCampaignFailure: boolean;
+  notificationChannel?: string;   // Slack channel for notifications
+  // General
+  timezone: string;
+  weekStartsOn: 0 | 1;            // 0 = Sunday, 1 = Monday
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 // ==========================================================================
 // =                     SALES COACHING SYSTEM TYPES                        =
 // ==========================================================================
