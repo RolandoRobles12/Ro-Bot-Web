@@ -32,6 +32,8 @@ import {
   CoachingSession,
   MessageCampaign,
   CampaignExecution,
+  CustomHubSpotProperty,
+  WorkspaceSettings,
 } from '@/types';
 
 // Generic Firestore helpers
@@ -580,4 +582,99 @@ export const campaignExecutionService = {
       orderBy('executedAt', 'desc'),
       limit(limitCount)
     ),
+};
+
+// ==========================================================================
+// =                       SETTINGS SERVICES                                 =
+// ==========================================================================
+
+// Custom HubSpot Property services
+export const hubspotPropertyService = {
+  get: (propertyId: string) =>
+    getDocument<CustomHubSpotProperty>('hubspot_properties', propertyId),
+  getByWorkspace: (workspaceId: string) =>
+    getDocuments<CustomHubSpotProperty>(
+      'hubspot_properties',
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('category', 'asc'),
+      orderBy('label', 'asc')
+    ),
+  getAll: () =>
+    getDocuments<CustomHubSpotProperty>(
+      'hubspot_properties',
+      where('isActive', '==', true),
+      orderBy('category', 'asc'),
+      orderBy('label', 'asc')
+    ),
+  create: (data: Omit<CustomHubSpotProperty, 'id'>) =>
+    createDocument<CustomHubSpotProperty>('hubspot_properties', data),
+  update: (propertyId: string, data: Partial<CustomHubSpotProperty>) =>
+    updateDocument('hubspot_properties', propertyId, data),
+  delete: (propertyId: string) =>
+    deleteDocument('hubspot_properties', propertyId),
+  subscribe: (
+    workspaceId: string,
+    callback: (properties: CustomHubSpotProperty[]) => void
+  ) =>
+    subscribeToCollection<CustomHubSpotProperty>(
+      'hubspot_properties',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('category', 'asc')
+    ),
+};
+
+// Workspace Settings services
+export const workspaceSettingsService = {
+  get: (workspaceId: string) =>
+    getDocument<WorkspaceSettings>('workspace_settings', workspaceId),
+  getByWorkspace: async (workspaceId: string): Promise<WorkspaceSettings | null> => {
+    const results = await getDocuments<WorkspaceSettings>(
+      'workspace_settings',
+      where('workspaceId', '==', workspaceId),
+      limit(1)
+    );
+    return results.length > 0 ? results[0] : null;
+  },
+  create: (data: Omit<WorkspaceSettings, 'id'>) =>
+    createDocument<WorkspaceSettings>('workspace_settings', data),
+  update: (settingsId: string, data: Partial<WorkspaceSettings>) =>
+    updateDocument('workspace_settings', settingsId, data),
+  upsert: async (workspaceId: string, data: Partial<WorkspaceSettings>) => {
+    const existing = await getDocuments<WorkspaceSettings>(
+      'workspace_settings',
+      where('workspaceId', '==', workspaceId),
+      limit(1)
+    );
+    if (existing.length > 0) {
+      await updateDocument('workspace_settings', existing[0].id, data);
+      return existing[0].id;
+    } else {
+      return createDocument<WorkspaceSettings>('workspace_settings', {
+        workspaceId,
+        notifyOnCampaignSuccess: false,
+        notifyOnCampaignFailure: true,
+        timezone: 'America/Mexico_City',
+        weekStartsOn: 1,
+        ...data,
+      } as Omit<WorkspaceSettings, 'id'>);
+    }
+  },
+  subscribe: (workspaceId: string, callback: (settings: WorkspaceSettings | null) => void) => {
+    const q = query(
+      collection(db, 'workspace_settings'),
+      where('workspaceId', '==', workspaceId),
+      limit(1)
+    );
+    return onSnapshot(q, (snapshot) => {
+      if (snapshot.docs.length > 0) {
+        const doc = snapshot.docs[0];
+        callback({ id: doc.id, ...doc.data() } as WorkspaceSettings);
+      } else {
+        callback(null);
+      }
+    });
+  },
 };

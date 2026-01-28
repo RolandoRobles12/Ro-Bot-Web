@@ -1,119 +1,117 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { Plus, Trash2, Edit2, Power, Calculator, Zap } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Edit2,
+  Power,
+  Zap,
+  ArrowRight,
+  AlertTriangle,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  Send,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
-import { ruleService, workspaceService, templateService } from '@/services/firestore';
-import { useAuthStore } from '@/store/authStore';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { useAppStore } from '@/store/appStore';
+import {
+  ruleService,
+  workspaceService,
+  templateService,
+  hubspotPropertyService,
+} from '@/services/firestore';
 import type {
   MessageRule,
   RuleCondition,
   RuleAction,
   SlackWorkspace,
   MessageTemplate,
-  MetricCalculation,
-  CalculationType,
+  CustomHubSpotProperty,
 } from '@/types';
 
-interface RuleFormData {
-  workspaceId: string;
-  name: string;
-  description: string;
-  conditions: RuleCondition[];
-  actions: RuleAction[];
-}
-
-const CALCULATION_TYPES: { value: CalculationType; label: string; description: string }[] = [
-  { value: 'sum', label: 'Suma', description: 'Sumar múltiples valores' },
-  { value: 'average', label: 'Promedio', description: 'Calcular promedio de valores' },
-  { value: 'divide', label: 'Dividir', description: 'Dividir primer valor entre segundo (ej: tasa de conversión)' },
-  { value: 'multiply', label: 'Multiplicar', description: 'Multiplicar valores' },
-  { value: 'subtract', label: 'Restar', description: 'Restar segundo valor del primero' },
-  { value: 'count', label: 'Contar', description: 'Contar número de elementos' },
-];
-
-const HUBSPOT_PROPERTIES = [
-  { value: 'dealstage', label: 'Etapa del Negocio', category: 'negocio' },
-  { value: 'amount', label: 'Monto del Negocio', category: 'negocio' },
-  { value: 'closedate', label: 'Fecha de Cierre', category: 'negocio' },
-  { value: 'num_associated_contacts', label: 'Número de Contactos', category: 'negocio' },
-  { value: 'hs_deal_stage_probability', label: 'Probabilidad del Negocio', category: 'negocio' },
-  { value: 'email', label: 'Correo', category: 'contacto' },
-  { value: 'firstname', label: 'Nombre', category: 'contacto' },
-  { value: 'lastname', label: 'Apellido', category: 'contacto' },
-  { value: 'lifecyclestage', label: 'Etapa del Ciclo de Vida', category: 'contacto' },
-];
-
+// Operators for conditions
 const OPERATORS = [
-  { value: 'equals', label: 'Igual a' },
-  { value: 'not_equals', label: 'Diferente de' },
-  { value: 'greater_than', label: 'Mayor que' },
-  { value: 'less_than', label: 'Menor que' },
-  { value: 'contains', label: 'Contiene' },
-  { value: 'between', label: 'Entre' },
-];
+  { value: 'equals', label: 'Es igual a', symbol: '=' },
+  { value: 'not_equals', label: 'Es diferente de', symbol: '≠' },
+  { value: 'greater_than', label: 'Es mayor que', symbol: '>' },
+  { value: 'less_than', label: 'Es menor que', symbol: '<' },
+  { value: 'contains', label: 'Contiene', symbol: '∋' },
+  { value: 'between', label: 'Está entre', symbol: '↔' },
+] as const;
+
+// Action types
+const ACTION_TYPES = [
+  { value: 'send_message', label: 'Enviar mensaje', icon: Send, description: 'Envía un mensaje de Slack' },
+  { value: 'webhook', label: 'Llamar webhook', icon: Zap, description: 'Ejecuta una solicitud HTTP' },
+] as const;
+
+// Create empty condition
+const createEmptyCondition = (): RuleCondition => ({
+  type: 'hubspot_property',
+  property: '',
+  operator: 'equals',
+  value: '',
+});
+
+// Create empty action
+const createEmptyAction = (): RuleAction => ({
+  type: 'send_message',
+  recipients: [],
+});
 
 export function Rules() {
-  const { user } = useAuthStore();
+  const { selectedWorkspace } = useAppStore();
   const [rules, setRules] = useState<MessageRule[]>([]);
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string>('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingRule, setEditingRule] = useState<MessageRule | null>(null);
+  const [customProperties, setCustomProperties] = useState<CustomHubSpotProperty[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const { register, handleSubmit, reset, watch, setValue } = useForm<RuleFormData>({
-    defaultValues: {
-      conditions: [{
-        type: 'hubspot_property',
-        operator: 'equals',
-        value: ''
-      }],
-      actions: [{
-        type: 'send_message',
-        recipients: []
-      }],
-    },
-  });
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<MessageRule | null>(null);
 
-  const conditions = watch('conditions');
-  const actions = watch('actions');
-  const selectedWorkspaceId = watch('workspaceId');
+  // Form state
+  const [formName, setFormName] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formConditions, setFormConditions] = useState<RuleCondition[]>([createEmptyCondition()]);
+  const [formActions, setFormActions] = useState<RuleAction[]>([createEmptyAction()]);
+  const [saving, setSaving] = useState(false);
+
+  // UI state
+  const [expandedCondition, setExpandedCondition] = useState<number | null>(0);
+  const [expandedAction, setExpandedAction] = useState<number | null>(0);
 
   useEffect(() => {
     loadWorkspaces();
   }, []);
 
   useEffect(() => {
-    if (selectedWorkspace) {
-      loadRules(selectedWorkspace);
+    if (selectedWorkspace?.id) {
+      loadRules();
+      loadTemplates();
+      loadCustomProperties();
     }
-  }, [selectedWorkspace]);
-
-  useEffect(() => {
-    if (selectedWorkspaceId) {
-      loadTemplates(selectedWorkspaceId);
-    }
-  }, [selectedWorkspaceId]);
+  }, [selectedWorkspace?.id]);
 
   const loadWorkspaces = async () => {
     try {
       const data = await workspaceService.getAll();
       setWorkspaces(data);
-      if (data.length > 0 && !selectedWorkspace) {
-        setSelectedWorkspace(data[0].id);
-      }
     } catch (error) {
-      toast.error('Error al cargar workspaces');
-      console.error(error);
+      console.error('Error loading workspaces:', error);
     }
   };
 
-  const loadRules = async (workspaceId: string) => {
+  const loadRules = async () => {
+    if (!selectedWorkspace?.id) return;
     try {
       setLoading(true);
-      const data = await ruleService.getByWorkspace(workspaceId);
+      const data = await ruleService.getByWorkspace(selectedWorkspace.id);
       setRules(data);
     } catch (error) {
       toast.error('Error al cargar reglas');
@@ -123,151 +121,179 @@ export function Rules() {
     }
   };
 
-  const loadTemplates = async (workspaceId: string) => {
+  const loadTemplates = async () => {
+    if (!selectedWorkspace?.id) return;
     try {
-      const data = await templateService.getByWorkspace(workspaceId);
+      const data = await templateService.getByWorkspace(selectedWorkspace.id);
       setTemplates(data);
     } catch (error) {
-      console.error('Failed to load templates:', error);
+      console.error('Error loading templates:', error);
+    }
+  };
+
+  const loadCustomProperties = async () => {
+    if (!selectedWorkspace?.id) return;
+    try {
+      const data = await hubspotPropertyService.getByWorkspace(selectedWorkspace.id);
+      setCustomProperties(data);
+    } catch (error) {
+      console.error('Error loading custom properties:', error);
     }
   };
 
   const openCreateModal = () => {
     setEditingRule(null);
-    reset({
-      workspaceId: selectedWorkspace,
-      name: '',
-      description: '',
-      conditions: [{ type: 'hubspot_property', operator: 'equals', value: '' }],
-      actions: [{ type: 'send_message', recipients: [] }],
-    });
+    setFormName('');
+    setFormDescription('');
+    setFormConditions([createEmptyCondition()]);
+    setFormActions([createEmptyAction()]);
+    setExpandedCondition(0);
+    setExpandedAction(0);
     setIsModalOpen(true);
   };
 
   const openEditModal = (rule: MessageRule) => {
     setEditingRule(rule);
-    reset({
-      workspaceId: rule.workspaceId,
-      name: rule.name,
-      description: rule.description || '',
-      conditions: rule.conditions,
-      actions: rule.actions,
-    });
+    setFormName(rule.name);
+    setFormDescription(rule.description || '');
+    setFormConditions(rule.conditions.length > 0 ? rule.conditions : [createEmptyCondition()]);
+    setFormActions(rule.actions.length > 0 ? rule.actions : [createEmptyAction()]);
+    setExpandedCondition(0);
+    setExpandedAction(0);
     setIsModalOpen(true);
   };
 
-  const onSubmit = async (data: RuleFormData) => {
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingRule(null);
+  };
+
+  const handleSubmit = async () => {
+    if (!formName.trim()) {
+      toast.error('El nombre de la regla es requerido');
+      return;
+    }
+    if (!selectedWorkspace?.id) {
+      toast.error('No hay workspace seleccionado');
+      return;
+    }
+
+    // Validate at least one valid condition
+    const validConditions = formConditions.filter((c) => c.property && c.value);
+    if (validConditions.length === 0) {
+      toast.error('Agrega al menos una condición válida');
+      return;
+    }
+
     try {
+      setSaving(true);
       if (editingRule) {
         await ruleService.update(editingRule.id, {
-          ...data,
+          name: formName,
+          description: formDescription,
+          conditions: validConditions,
+          actions: formActions,
           updatedAt: Timestamp.now(),
         });
-        toast.success('Regla actualizada exitosamente');
+        toast.success('Regla actualizada');
       } else {
         await ruleService.create({
-          ...data,
+          workspaceId: selectedWorkspace.id,
+          name: formName,
+          description: formDescription,
+          conditions: validConditions,
+          actions: formActions,
           isActive: true,
-          createdBy: user?.id || 'mock-user-id',
+          createdBy: 'user', // TODO: Get actual user ID
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
-        toast.success('Regla creada exitosamente');
+        toast.success('Regla creada');
       }
-      setIsModalOpen(false);
-      loadRules(selectedWorkspace);
+      closeModal();
+      loadRules();
     } catch (error) {
       toast.error('Error al guardar la regla');
       console.error(error);
+    } finally {
+      setSaving(false);
     }
   };
 
   const toggleRuleStatus = async (rule: MessageRule) => {
     try {
-      await ruleService.update(rule.id, {
-        isActive: !rule.isActive,
-      });
+      await ruleService.update(rule.id, { isActive: !rule.isActive });
       toast.success(`Regla ${rule.isActive ? 'desactivada' : 'activada'}`);
-      loadRules(selectedWorkspace);
+      loadRules();
     } catch (error) {
-      toast.error('Error al actualizar estado de la regla');
+      toast.error('Error al actualizar estado');
       console.error(error);
     }
   };
 
   const deleteRule = async (ruleId: string) => {
     if (!confirm('¿Estás seguro de eliminar esta regla?')) return;
-
     try {
       await ruleService.delete(ruleId);
-      toast.success('Regla eliminada exitosamente');
-      loadRules(selectedWorkspace);
+      toast.success('Regla eliminada');
+      loadRules();
     } catch (error) {
-      toast.error('Error al eliminar la regla');
+      toast.error('Error al eliminar');
       console.error(error);
     }
   };
 
+  // Condition helpers
   const addCondition = () => {
-    const newCondition: RuleCondition = {
-      type: 'hubspot_property',
-      operator: 'equals',
-      value: '',
-    };
-    setValue('conditions', [...conditions, newCondition]);
+    setFormConditions([...formConditions, createEmptyCondition()]);
+    setExpandedCondition(formConditions.length);
   };
 
   const removeCondition = (index: number) => {
-    setValue(
-      'conditions',
-      conditions.filter((_, i) => i !== index)
-    );
+    if (formConditions.length > 1) {
+      setFormConditions(formConditions.filter((_, i) => i !== index));
+      setExpandedCondition(null);
+    }
   };
 
+  const updateCondition = (index: number, updates: Partial<RuleCondition>) => {
+    const newConditions = [...formConditions];
+    newConditions[index] = { ...newConditions[index], ...updates };
+    setFormConditions(newConditions);
+  };
+
+  // Action helpers
   const addAction = () => {
-    const newAction: RuleAction = {
-      type: 'send_message',
-      recipients: [],
-    };
-    setValue('actions', [...actions, newAction]);
+    setFormActions([...formActions, createEmptyAction()]);
+    setExpandedAction(formActions.length);
   };
 
   const removeAction = (index: number) => {
-    setValue(
-      'actions',
-      actions.filter((_, i) => i !== index)
-    );
+    if (formActions.length > 1) {
+      setFormActions(formActions.filter((_, i) => i !== index));
+      setExpandedAction(null);
+    }
   };
 
-  const updateCondition = (index: number, field: keyof RuleCondition, value: any) => {
-    const updated = [...conditions];
-    updated[index] = { ...updated[index], [field]: value };
-    setValue('conditions', updated);
+  const updateAction = (index: number, updates: Partial<RuleAction>) => {
+    const newActions = [...formActions];
+    newActions[index] = { ...newActions[index], ...updates };
+    setFormActions(newActions);
   };
 
-  const updateAction = (index: number, field: keyof RuleAction, value: any) => {
-    const updated = [...actions];
-    updated[index] = { ...updated[index], [field]: value };
-    setValue('actions', updated);
+  // Get property label
+  const getPropertyLabel = (propertyName: string) => {
+    const prop = customProperties.find((p) => p.name === propertyName);
+    return prop?.label || propertyName;
   };
 
-  const updateCalculation = (
-    conditionIndex: number,
-    field: keyof MetricCalculation,
-    value: any
-  ) => {
-    const updated = [...conditions];
-    const calculation = updated[conditionIndex].calculation || {
-      type: 'sum' as CalculationType,
-      properties: [],
-      label: '',
-    };
-    updated[conditionIndex] = {
-      ...updated[conditionIndex],
-      calculation: { ...calculation, [field]: value },
-    };
-    setValue('conditions', updated);
+  // Get operator label
+  const getOperatorLabel = (operator: string) => {
+    const op = OPERATORS.find((o) => o.value === operator);
+    return op?.label || operator;
   };
+
+  const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspace?.id);
 
   return (
     <div className="space-y-6">
@@ -276,170 +302,146 @@ export function Rules() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Reglas de Automatización</h1>
           <p className="mt-2 text-gray-600">
-            Crea reglas basadas en rendimiento con cálculos de métricas
+            Automatiza acciones basadas en propiedades de HubSpot
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Crear Regla</span>
-        </button>
+        <Button onClick={openCreateModal}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nueva Regla
+        </Button>
       </div>
 
-      {/* Workspace Selector */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Seleccionar Workspace
-        </label>
-        <select
-          value={selectedWorkspace}
-          onChange={(e) => setSelectedWorkspace(e.target.value)}
-          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-        >
-          {workspaces.map((workspace) => (
-            <option key={workspace.id} value={workspace.id}>
-              {workspace.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* No custom properties warning */}
+      {customProperties.length === 0 && !loading && (
+        <Card className="p-4 bg-yellow-50 border-yellow-200">
+          <div className="flex items-start space-x-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-yellow-800">Sin propiedades configuradas</h3>
+              <p className="text-sm text-yellow-700 mt-1">
+                Configura las propiedades de HubSpot que deseas usar en las reglas desde la sección de{' '}
+                <a href="/settings" className="underline font-medium">Configuración</a>.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Workspace indicator */}
+      {currentWorkspace && (
+        <div className="text-sm text-gray-500">
+          Mostrando reglas de: <strong>{currentWorkspace.name}</strong>
+        </div>
+      )}
 
       {/* Rules List */}
       {loading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slack-purple mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando reglas...</p>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slack-purple"></div>
         </div>
       ) : rules.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <Zap className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+        <Card className="p-12 text-center">
+          <Zap className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
             Sin reglas de automatización
           </h3>
-          <p className="text-gray-600 mb-6">
-            Crea tu primera regla para automatizar mensajes basados en métricas de rendimiento
+          <p className="text-gray-500 mb-6 max-w-md mx-auto">
+            Las reglas te permiten automatizar acciones cuando se cumplen ciertas condiciones
+            en tus datos de HubSpot.
           </p>
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Crear Primera Regla</span>
-          </button>
-        </div>
+          <Button onClick={openCreateModal}>
+            <Plus className="w-4 h-4 mr-2" />
+            Crear primera regla
+          </Button>
+        </Card>
       ) : (
         <div className="grid gap-4">
           {rules.map((rule) => (
-            <div
-              key={rule.id}
-              className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
-            >
+            <Card key={rule.id} className="p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
+                  {/* Header */}
                   <div className="flex items-center space-x-3">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {rule.name}
-                    </h3>
+                    <h3 className="font-semibold text-gray-900 truncate">{rule.name}</h3>
                     <span
-                      className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         rule.isActive
                           ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
+                          : 'bg-gray-100 text-gray-600'
                       }`}
                     >
                       {rule.isActive ? 'Activa' : 'Inactiva'}
                     </span>
                   </div>
+
                   {rule.description && (
-                    <p className="mt-1 text-sm text-gray-600">{rule.description}</p>
+                    <p className="text-sm text-gray-500 mt-1">{rule.description}</p>
                   )}
 
-                  <div className="mt-4 space-y-2">
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">
-                        Condiciones:
+                  {/* Visual rule representation */}
+                  <div className="mt-4 flex items-center flex-wrap gap-2 text-sm">
+                    {/* Conditions */}
+                    <div className="flex items-center space-x-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg">
+                      <Filter className="w-4 h-4" />
+                      <span>
+                        {rule.conditions.length === 1 ? (
+                          <>
+                            <span className="font-medium">{getPropertyLabel(rule.conditions[0].property || '')}</span>
+                            {' '}{getOperatorLabel(rule.conditions[0].operator)}{' '}
+                            <span className="font-medium">{rule.conditions[0].value}</span>
+                          </>
+                        ) : (
+                          <span>{rule.conditions.length} condiciones</span>
+                        )}
                       </span>
-                      <div className="mt-1 space-y-1">
-                        {rule.conditions.map((condition, idx) => (
-                          <div
-                            key={idx}
-                            className="text-sm text-gray-600 flex items-center space-x-2"
-                          >
-                            {condition.type === 'metric_calculation' &&
-                            condition.calculation ? (
-                              <>
-                                <Calculator className="w-4 h-4 text-slack-purple" />
-                                <span>
-                                  {condition.calculation.label} (
-                                  {condition.calculation.type}) {condition.operator}{' '}
-                                  {condition.value}
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="font-medium">
-                                  {condition.property}
-                                </span>
-                                <span>{condition.operator}</span>
-                                <span className="font-medium">{condition.value}</span>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </div>
                     </div>
 
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">
-                        Acciones:
+                    <ArrowRight className="w-4 h-4 text-gray-400" />
+
+                    {/* Actions */}
+                    <div className="flex items-center space-x-2 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg">
+                      <Send className="w-4 h-4" />
+                      <span>
+                        {rule.actions.length === 1 ? (
+                          rule.actions[0].type === 'send_message' ? 'Enviar mensaje' : 'Llamar webhook'
+                        ) : (
+                          <span>{rule.actions.length} acciones</span>
+                        )}
                       </span>
-                      <div className="mt-1 space-y-1">
-                        {rule.actions.map((action, idx) => (
-                          <div key={idx} className="text-sm text-gray-600">
-                            {action.type === 'send_message' && (
-                              <span>
-                                Enviar mensaje a{' '}
-                                {action.recipients?.length || 0} destinatario(s)
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2 ml-4">
+                {/* Actions */}
+                <div className="flex items-center space-x-1 ml-4">
                   <button
                     onClick={() => toggleRuleStatus(rule)}
                     className={`p-2 rounded-lg transition-colors ${
                       rule.isActive
                         ? 'text-green-600 hover:bg-green-50'
-                        : 'text-gray-400 hover:bg-gray-50'
+                        : 'text-gray-400 hover:bg-gray-100'
                     }`}
-                    title={rule.isActive ? 'Desactivar regla' : 'Activar regla'}
+                    title={rule.isActive ? 'Desactivar' : 'Activar'}
                   >
                     <Power className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => openEditModal(rule)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Editar regla"
+                    title="Editar"
                   >
                     <Edit2 className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => deleteRule(rule.id)}
                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Eliminar regla"
+                    title="Eliminar"
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -447,364 +449,359 @@ export function Rules() {
       {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {editingRule ? 'Editar Regla' : 'Crear Nueva Regla'}
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full my-8">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">
+                  {editingRule ? 'Editar Regla' : 'Nueva Regla'}
                 </h2>
+                <button
+                  onClick={closeModal}
+                  className="text-gray-400 hover:text-gray-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre de la regla *
+                  </label>
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+                    placeholder="Ej: Alerta de negocio cerrado"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Descripción (opcional)
+                  </label>
+                  <textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+                    placeholder="Describe qué hace esta regla"
+                  />
+                </div>
               </div>
 
-              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-                {/* Basic Info */}
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre de Regla *
-                    </label>
-                    <input
-                      {...register('name', { required: true })}
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: Alerta de Alta Conversión de Negocios"
-                    />
+              {/* Conditions Section */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <Filter className="w-4 h-4 text-blue-600" />
+                    <h3 className="font-medium text-gray-900">Condiciones</h3>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Descripción
-                    </label>
-                    <textarea
-                      {...register('description')}
-                      rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Describe qué hace esta regla"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Workspace *
-                    </label>
-                    <select
-                      {...register('workspaceId', { required: true })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                    >
-                      {workspaces.map((workspace) => (
-                        <option key={workspace.id} value={workspace.id}>
-                          {workspace.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={addCondition}
+                    className="text-sm text-slack-purple hover:text-slack-purple/80"
+                  >
+                    + Agregar condición
+                  </button>
                 </div>
 
-                {/* Conditions */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Condiciones
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={addCondition}
-                      className="text-sm text-slack-purple hover:text-opacity-80"
-                    >
-                      + Agregar Condición
-                    </button>
+                {customProperties.length === 0 ? (
+                  <div className="bg-yellow-50 rounded-lg p-4 text-sm text-yellow-800 flex items-start space-x-2">
+                    <AlertTriangle className="w-4 h-4 mt-0.5" />
+                    <div>
+                      <p className="font-medium">Sin propiedades disponibles</p>
+                      <p className="mt-1">
+                        Ve a <a href="/settings" className="underline">Configuración</a> para agregar propiedades de HubSpot.
+                      </p>
+                    </div>
                   </div>
-
-                  <div className="space-y-4">
-                    {conditions.map((condition, index) => (
+                ) : (
+                  <div className="space-y-2">
+                    {formConditions.map((condition, index) => (
                       <div
                         key={index}
-                        className="p-4 border border-gray-200 rounded-lg space-y-3"
+                        className="border border-gray-200 rounded-lg overflow-hidden"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-700">
-                            Condición {index + 1}
-                          </span>
-                          {conditions.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeCondition(index)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-1">
-                              Tipo
-                            </label>
-                            <select
-                              value={condition.type}
-                              onChange={(e) =>
-                                updateCondition(index, 'type', e.target.value)
-                              }
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                            >
-                              <option value="hubspot_property">
-                                Propiedad HubSpot
-                              </option>
-                              <option value="metric_calculation">
-                                Cálculo de Métrica
-                              </option>
-                              <option value="time_based">Basado en Tiempo</option>
-                            </select>
+                        {/* Condition Header */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedCondition(expandedCondition === index ? null : index)
+                          }
+                          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center space-x-2 text-sm">
+                            <span className="text-gray-500">Condición {index + 1}:</span>
+                            {condition.property ? (
+                              <span className="font-medium text-gray-900">
+                                {getPropertyLabel(condition.property)}{' '}
+                                <span className="text-gray-500">{getOperatorLabel(condition.operator)}</span>{' '}
+                                {condition.value}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic">Sin configurar</span>
+                            )}
                           </div>
+                          <div className="flex items-center space-x-2">
+                            {formConditions.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeCondition(index);
+                                }}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            {expandedCondition === index ? (
+                              <ChevronUp className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </button>
 
-                          {condition.type === 'metric_calculation' ? (
-                            <>
+                        {/* Condition Body */}
+                        {expandedCondition === index && (
+                          <div className="p-4 space-y-3 bg-white">
+                            <div className="grid grid-cols-3 gap-3">
                               <div>
-                                <label className="block text-sm text-gray-600 mb-1">
-                                  Tipo de Cálculo
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Propiedad
                                 </label>
                                 <select
-                                  value={condition.calculation?.type || 'sum'}
+                                  value={condition.property || ''}
                                   onChange={(e) =>
-                                    updateCalculation(index, 'type', e.target.value)
+                                    updateCondition(index, { property: e.target.value })
                                   }
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                                 >
-                                  {CALCULATION_TYPES.map((calc) => (
-                                    <option key={calc.value} value={calc.value}>
-                                      {calc.label} - {calc.description}
+                                  <option value="">Seleccionar...</option>
+                                  {customProperties.map((prop) => (
+                                    <option key={prop.id} value={prop.name}>
+                                      {prop.label}
                                     </option>
                                   ))}
                                 </select>
                               </div>
-
-                              <div className="col-span-2">
-                                <label className="block text-sm text-gray-600 mb-1">
-                                  Etiqueta de Métrica
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Operador
+                                </label>
+                                <select
+                                  value={condition.operator}
+                                  onChange={(e) =>
+                                    updateCondition(index, { operator: e.target.value as RuleCondition['operator'] })
+                                  }
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                                >
+                                  {OPERATORS.map((op) => (
+                                    <option key={op.value} value={op.value}>
+                                      {op.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Valor
                                 </label>
                                 <input
                                   type="text"
-                                  value={condition.calculation?.label || ''}
+                                  value={condition.value}
                                   onChange={(e) =>
-                                    updateCalculation(index, 'label', e.target.value)
+                                    updateCondition(index, { value: e.target.value })
                                   }
-                                  placeholder="Ej: Tasa de Conversión de Negocios"
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                                  placeholder="Valor a comparar"
                                 />
                               </div>
-
-                              <div className="col-span-2">
-                                <label className="block text-sm text-gray-600 mb-1">
-                                  Propiedades HubSpot (separadas por coma)
-                                </label>
-                                <input
-                                  type="text"
-                                  value={condition.calculation?.properties?.join(', ') || ''}
-                                  onChange={(e) =>
-                                    updateCalculation(
-                                      index,
-                                      'properties',
-                                      e.target.value.split(',').map((s) => s.trim())
-                                    )
-                                  }
-                                  placeholder="e.g., num_deals_closed, num_total_deals"
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                                />
-                              </div>
-                            </>
-                          ) : (
-                            <div>
-                              <label className="block text-sm text-gray-600 mb-1">
-                                Propiedad
-                              </label>
-                              <select
-                                value={condition.property || ''}
-                                onChange={(e) =>
-                                  updateCondition(index, 'property', e.target.value)
-                                }
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                              >
-                                <option value="">Seleccionar propiedad</option>
-                                {HUBSPOT_PROPERTIES.map((prop) => (
-                                  <option key={prop.value} value={prop.value}>
-                                    {prop.label} ({prop.category})
-                                  </option>
-                                ))}
-                              </select>
                             </div>
-                          )}
-
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-1">
-                              Operador
-                            </label>
-                            <select
-                              value={condition.operator}
-                              onChange={(e) =>
-                                updateCondition(index, 'operator', e.target.value)
-                              }
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                            >
-                              {OPERATORS.map((op) => (
-                                <option key={op.value} value={op.value}>
-                                  {op.label}
-                                </option>
-                              ))}
-                            </select>
                           </div>
-
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-1">
-                              Valor
-                            </label>
-                            <input
-                              type="text"
-                              value={condition.value}
-                              onChange={(e) =>
-                                updateCondition(index, 'value', e.target.value)
-                              }
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                            />
-                          </div>
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
+                )}
+
+                {formConditions.length > 1 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Las condiciones se evalúan con lógica AND (todas deben cumplirse)
+                  </p>
+                )}
+              </div>
+
+              {/* Actions Section */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <Zap className="w-4 h-4 text-green-600" />
+                    <h3 className="font-medium text-gray-900">Acciones</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addAction}
+                    className="text-sm text-slack-purple hover:text-slack-purple/80"
+                  >
+                    + Agregar acción
+                  </button>
                 </div>
 
-                {/* Actions */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Acciones</h3>
-                    <button
-                      type="button"
-                      onClick={addAction}
-                      className="text-sm text-slack-purple hover:text-opacity-80"
+                <div className="space-y-2">
+                  {formActions.map((action, index) => (
+                    <div
+                      key={index}
+                      className="border border-gray-200 rounded-lg overflow-hidden"
                     >
-                      + Agregar Acción
-                    </button>
-                  </div>
-
-                  <div className="space-y-4">
-                    {actions.map((action, index) => (
-                      <div
-                        key={index}
-                        className="p-4 border border-gray-200 rounded-lg space-y-3"
+                      {/* Action Header */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedAction(expandedAction === index ? null : index)
+                        }
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-700">
-                            Acción {index + 1}
+                        <div className="flex items-center space-x-2 text-sm">
+                          <span className="text-gray-500">Acción {index + 1}:</span>
+                          <span className="font-medium text-gray-900">
+                            {ACTION_TYPES.find((a) => a.value === action.type)?.label}
                           </span>
-                          {actions.length > 1 && (
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {formActions.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => removeAction(index)}
-                              className="text-red-600 hover:text-red-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAction(index);
+                              }}
+                              className="text-red-500 hover:text-red-700"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           )}
+                          {expandedAction === index ? (
+                            <ChevronUp className="w-4 h-4 text-gray-400" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-400" />
+                          )}
                         </div>
+                      </button>
 
-                        <div className="grid grid-cols-2 gap-3">
+                      {/* Action Body */}
+                      {expandedAction === index && (
+                        <div className="p-4 space-y-3 bg-white">
                           <div>
-                            <label className="block text-sm text-gray-600 mb-1">
-                              Tipo de Acción
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Tipo de acción
                             </label>
-                            <select
-                              value={action.type}
-                              onChange={(e) =>
-                                updateAction(index, 'type', e.target.value)
-                              }
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                            >
-                              <option value="send_message">Enviar Mensaje</option>
-                              <option value="update_hubspot">Actualizar HubSpot</option>
-                              <option value="webhook">Llamar Webhook</option>
-                            </select>
+                            <div className="grid grid-cols-2 gap-2">
+                              {ACTION_TYPES.map((type) => (
+                                <button
+                                  key={type.value}
+                                  type="button"
+                                  onClick={() => updateAction(index, { type: type.value as RuleAction['type'] })}
+                                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg border text-left transition-colors text-sm ${
+                                    action.type === type.value
+                                      ? 'border-slack-purple bg-slack-purple/5 text-slack-purple'
+                                      : 'border-gray-200 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <type.icon className="w-4 h-4" />
+                                  <span>{type.label}</span>
+                                </button>
+                              ))}
+                            </div>
                           </div>
 
                           {action.type === 'send_message' && (
                             <>
                               <div>
-                                <label className="block text-sm text-gray-600 mb-1">
-                                  Plantilla
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Plantilla de mensaje
                                 </label>
                                 <select
                                   value={action.templateId || ''}
                                   onChange={(e) =>
-                                    updateAction(index, 'templateId', e.target.value)
+                                    updateAction(index, { templateId: e.target.value })
                                   }
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                                 >
-                                  <option value="">Seleccionar plantilla</option>
-                                  {templates.map((template) => (
-                                    <option key={template.id} value={template.id}>
-                                      {template.name}
+                                  <option value="">Seleccionar plantilla...</option>
+                                  {templates.map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name}
                                     </option>
                                   ))}
                                 </select>
                               </div>
-
-                              <div className="col-span-2">
-                                <label className="block text-sm text-gray-600 mb-1">
-                                  Mensaje Personalizado (reemplaza plantilla)
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  O mensaje personalizado
                                 </label>
                                 <textarea
                                   value={action.customMessage || ''}
                                   onChange={(e) =>
-                                    updateAction(index, 'customMessage', e.target.value)
+                                    updateAction(index, { customMessage: e.target.value })
                                   }
                                   rows={2}
-                                  placeholder="Ej: La tasa de conversión es {{metric_value}}%"
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                                  placeholder="Mensaje a enviar (sobrescribe la plantilla)"
                                 />
-                              </div>
-
-                              <div className="col-span-2">
-                                <label className="flex items-center space-x-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={action.includeMetrics || false}
-                                    onChange={(e) =>
-                                      updateAction(
-                                        index,
-                                        'includeMetrics',
-                                        e.target.checked
-                                      )
-                                    }
-                                    className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
-                                  />
-                                  <span className="text-sm text-gray-700">
-                                    Incluir métricas calculadas en el mensaje
-                                  </span>
-                                </label>
                               </div>
                             </>
                           )}
+
+                          {action.type === 'webhook' && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                URL del webhook
+                              </label>
+                              <input
+                                type="url"
+                                value={action.webhookUrl || ''}
+                                onChange={(e) =>
+                                  updateAction(index, { webhookUrl: e.target.value })
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                                placeholder="https://..."
+                              />
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
+            </div>
 
-              <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-                >
-                  {editingRule ? 'Actualizar Regla' : 'Crear Regla'}
-                </button>
-              </div>
-            </form>
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+              <Button variant="ghost" onClick={closeModal}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving ? (
+                  <>
+                    <span className="animate-spin mr-2">...</span>
+                    Guardando...
+                  </>
+                ) : editingRule ? (
+                  'Actualizar Regla'
+                ) : (
+                  'Crear Regla'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
