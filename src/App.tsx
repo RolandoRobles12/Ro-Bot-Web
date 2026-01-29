@@ -10,7 +10,6 @@ import { Workspaces } from './pages/Workspaces';
 import { Rules } from './pages/Rules';
 import { Teams } from './pages/Teams';
 import { Scheduler } from './pages/Scheduler';
-import { Settings } from './pages/Settings';
 
 function App() {
   // TEMPORARY: Disabled auth loading check for development
@@ -96,17 +95,6 @@ function App() {
               <ProtectedRoute requiredRole="editor">
                 <Layout>
                   <Scheduler />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Settings />
                 </Layout>
               </ProtectedRoute>
             }

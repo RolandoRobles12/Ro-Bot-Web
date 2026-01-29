@@ -6,12 +6,12 @@ import {
   Power,
   Zap,
   ArrowRight,
-  AlertTriangle,
   X,
   ChevronDown,
   ChevronUp,
   Filter,
   Send,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -22,7 +22,6 @@ import {
   ruleService,
   workspaceService,
   templateService,
-  hubspotPropertyService,
 } from '@/services/firestore';
 import type {
   MessageRule,
@@ -30,7 +29,6 @@ import type {
   RuleAction,
   SlackWorkspace,
   MessageTemplate,
-  CustomHubSpotProperty,
 } from '@/types';
 
 // Operators for conditions
@@ -68,7 +66,6 @@ export function Rules() {
   const [rules, setRules] = useState<MessageRule[]>([]);
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [customProperties, setCustomProperties] = useState<CustomHubSpotProperty[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal state
@@ -94,7 +91,6 @@ export function Rules() {
     if (selectedWorkspace?.id) {
       loadRules();
       loadTemplates();
-      loadCustomProperties();
     }
   }, [selectedWorkspace?.id]);
 
@@ -128,16 +124,6 @@ export function Rules() {
       setTemplates(data);
     } catch (error) {
       console.error('Error loading templates:', error);
-    }
-  };
-
-  const loadCustomProperties = async () => {
-    if (!selectedWorkspace?.id) return;
-    try {
-      const data = await hubspotPropertyService.getByWorkspace(selectedWorkspace.id);
-      setCustomProperties(data);
-    } catch (error) {
-      console.error('Error loading custom properties:', error);
     }
   };
 
@@ -204,7 +190,7 @@ export function Rules() {
           conditions: validConditions,
           actions: formActions,
           isActive: true,
-          createdBy: 'user', // TODO: Get actual user ID
+          createdBy: 'user',
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
@@ -281,12 +267,6 @@ export function Rules() {
     setFormActions(newActions);
   };
 
-  // Get property label
-  const getPropertyLabel = (propertyName: string) => {
-    const prop = customProperties.find((p) => p.name === propertyName);
-    return prop?.label || propertyName;
-  };
-
   // Get operator label
   const getOperatorLabel = (operator: string) => {
     const op = OPERATORS.find((o) => o.value === operator);
@@ -302,7 +282,7 @@ export function Rules() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Reglas de Automatización</h1>
           <p className="mt-2 text-gray-600">
-            Automatiza acciones basadas en propiedades de HubSpot
+            Crea lógicas para automatizar acciones basadas en condiciones
           </p>
         </div>
         <Button onClick={openCreateModal}>
@@ -310,22 +290,6 @@ export function Rules() {
           Nueva Regla
         </Button>
       </div>
-
-      {/* No custom properties warning */}
-      {customProperties.length === 0 && !loading && (
-        <Card className="p-4 bg-yellow-50 border-yellow-200">
-          <div className="flex items-start space-x-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
-            <div>
-              <h3 className="font-medium text-yellow-800">Sin propiedades configuradas</h3>
-              <p className="text-sm text-yellow-700 mt-1">
-                Configura las propiedades de HubSpot que deseas usar en las reglas desde la sección de{' '}
-                <a href="/settings" className="underline font-medium">Configuración</a>.
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Workspace indicator */}
       {currentWorkspace && (
@@ -346,8 +310,8 @@ export function Rules() {
             Sin reglas de automatización
           </h3>
           <p className="text-gray-500 mb-6 max-w-md mx-auto">
-            Las reglas te permiten automatizar acciones cuando se cumplen ciertas condiciones
-            en tus datos de HubSpot.
+            Las reglas te permiten automatizar acciones cuando se cumplen ciertas condiciones.
+            Por ejemplo: enviar un mensaje cuando un campo tenga cierto valor.
           </p>
           <Button onClick={openCreateModal}>
             <Plus className="w-4 h-4 mr-2" />
@@ -386,7 +350,7 @@ export function Rules() {
                       <span>
                         {rule.conditions.length === 1 ? (
                           <>
-                            <span className="font-medium">{getPropertyLabel(rule.conditions[0].property || '')}</span>
+                            <span className="font-medium">{rule.conditions[0].property}</span>
                             {' '}{getOperatorLabel(rule.conditions[0].operator)}{' '}
                             <span className="font-medium">{rule.conditions[0].value}</span>
                           </>
@@ -500,7 +464,7 @@ export function Rules() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
                     <Filter className="w-4 h-4 text-blue-600" />
-                    <h3 className="font-medium text-gray-900">Condiciones</h3>
+                    <h3 className="font-medium text-gray-900">Condiciones (SI...)</h3>
                   </div>
                   <button
                     type="button"
@@ -511,126 +475,109 @@ export function Rules() {
                   </button>
                 </div>
 
-                {customProperties.length === 0 ? (
-                  <div className="bg-yellow-50 rounded-lg p-4 text-sm text-yellow-800 flex items-start space-x-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Sin propiedades disponibles</p>
-                      <p className="mt-1">
-                        Ve a <a href="/settings" className="underline">Configuración</a> para agregar propiedades de HubSpot.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {formConditions.map((condition, index) => (
-                      <div
-                        key={index}
-                        className="border border-gray-200 rounded-lg overflow-hidden"
+                <div className="space-y-2">
+                  {formConditions.map((condition, index) => (
+                    <div
+                      key={index}
+                      className="border border-gray-200 rounded-lg overflow-hidden"
+                    >
+                      {/* Condition Header */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedCondition(expandedCondition === index ? null : index)
+                        }
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                       >
-                        {/* Condition Header */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedCondition(expandedCondition === index ? null : index)
-                          }
-                          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
-                        >
-                          <div className="flex items-center space-x-2 text-sm">
-                            <span className="text-gray-500">Condición {index + 1}:</span>
-                            {condition.property ? (
-                              <span className="font-medium text-gray-900">
-                                {getPropertyLabel(condition.property)}{' '}
-                                <span className="text-gray-500">{getOperatorLabel(condition.operator)}</span>{' '}
-                                {condition.value}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 italic">Sin configurar</span>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {formConditions.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeCondition(index);
-                                }}
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                            {expandedCondition === index ? (
-                              <ChevronUp className="w-4 h-4 text-gray-400" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-gray-400" />
-                            )}
-                          </div>
-                        </button>
+                        <div className="flex items-center space-x-2 text-sm">
+                          <span className="text-gray-500">Condición {index + 1}:</span>
+                          {condition.property ? (
+                            <span className="font-medium text-gray-900">
+                              {condition.property}{' '}
+                              <span className="text-gray-500">{getOperatorLabel(condition.operator)}</span>{' '}
+                              {condition.value}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 italic">Sin configurar</span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {formConditions.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeCondition(index);
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {expandedCondition === index ? (
+                            <ChevronUp className="w-4 h-4 text-gray-400" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-400" />
+                          )}
+                        </div>
+                      </button>
 
-                        {/* Condition Body */}
-                        {expandedCondition === index && (
-                          <div className="p-4 space-y-3 bg-white">
-                            <div className="grid grid-cols-3 gap-3">
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Propiedad
-                                </label>
-                                <select
-                                  value={condition.property || ''}
-                                  onChange={(e) =>
-                                    updateCondition(index, { property: e.target.value })
-                                  }
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                                >
-                                  <option value="">Seleccionar...</option>
-                                  {customProperties.map((prop) => (
-                                    <option key={prop.id} value={prop.name}>
-                                      {prop.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Operador
-                                </label>
-                                <select
-                                  value={condition.operator}
-                                  onChange={(e) =>
-                                    updateCondition(index, { operator: e.target.value as RuleCondition['operator'] })
-                                  }
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                                >
-                                  {OPERATORS.map((op) => (
-                                    <option key={op.value} value={op.value}>
-                                      {op.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Valor
-                                </label>
-                                <input
-                                  type="text"
-                                  value={condition.value}
-                                  onChange={(e) =>
-                                    updateCondition(index, { value: e.target.value })
-                                  }
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                                  placeholder="Valor a comparar"
-                                />
-                              </div>
+                      {/* Condition Body */}
+                      {expandedCondition === index && (
+                        <div className="p-4 space-y-3 bg-white">
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Campo / Propiedad
+                              </label>
+                              <input
+                                type="text"
+                                value={condition.property || ''}
+                                onChange={(e) =>
+                                  updateCondition(index, { property: e.target.value })
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                                placeholder="Ej: status, deal_stage"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Operador
+                              </label>
+                              <select
+                                value={condition.operator}
+                                onChange={(e) =>
+                                  updateCondition(index, { operator: e.target.value as RuleCondition['operator'] })
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                              >
+                                {OPERATORS.map((op) => (
+                                  <option key={op.value} value={op.value}>
+                                    {op.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Valor
+                              </label>
+                              <input
+                                type="text"
+                                value={condition.value}
+                                onChange={(e) =>
+                                  updateCondition(index, { value: e.target.value })
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                                placeholder="Valor a comparar"
+                              />
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
                 {formConditions.length > 1 && (
                   <p className="text-xs text-gray-500 mt-2">
@@ -644,7 +591,7 @@ export function Rules() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
                     <Zap className="w-4 h-4 text-green-600" />
-                    <h3 className="font-medium text-gray-900">Acciones</h3>
+                    <h3 className="font-medium text-gray-900">Acciones (ENTONCES...)</h3>
                   </div>
                   <button
                     type="button"
@@ -726,7 +673,7 @@ export function Rules() {
                             <>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Plantilla de mensaje
+                                  Usar plantilla existente
                                 </label>
                                 <select
                                   value={action.templateId || ''}
@@ -735,7 +682,7 @@ export function Rules() {
                                   }
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
                                 >
-                                  <option value="">Seleccionar plantilla...</option>
+                                  <option value="">Ninguna (usar mensaje personalizado)</option>
                                   {templates.map((t) => (
                                     <option key={t.id} value={t.id}>
                                       {t.name}
@@ -745,17 +692,20 @@ export function Rules() {
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  O mensaje personalizado
+                                  O escribe un mensaje personalizado
                                 </label>
                                 <textarea
                                   value={action.customMessage || ''}
                                   onChange={(e) =>
                                     updateAction(index, { customMessage: e.target.value })
                                   }
-                                  rows={2}
+                                  rows={3}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                                  placeholder="Mensaje a enviar (sobrescribe la plantilla)"
+                                  placeholder="Escribe tu mensaje aquí. Puedes usar variables como {{nombre}}, {{valor}}, etc."
                                 />
+                                <p className="mt-1 text-xs text-gray-500">
+                                  Usa {'{{variable}}'} para insertar datos dinámicos
+                                </p>
                               </div>
                             </>
                           )}
@@ -780,6 +730,20 @@ export function Rules() {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Help text */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <MessageSquare className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium">¿Cómo funcionan las reglas?</p>
+                    <p className="mt-1">
+                      Cuando <strong>todas las condiciones</strong> se cumplen, se ejecutan las acciones configuradas.
+                      Por ejemplo: "Si <em>status</em> es igual a <em>cerrado</em>, entonces enviar mensaje de felicitación."
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

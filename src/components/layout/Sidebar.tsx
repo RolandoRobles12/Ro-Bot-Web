@@ -5,7 +5,6 @@ import {
   Send,
   Calendar,
   History,
-  Settings,
   Zap,
   Users,
   MessageSquare,
@@ -24,7 +23,6 @@ const navigation = [
   { name: 'Reglas', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },
   { name: 'Equipos', href: '/teams', icon: Users, roles: ['admin'] },
   { name: 'Workspaces', href: '/workspaces', icon: MessageSquare, roles: ['admin'] },
-  { name: 'Configuración', href: '/settings', icon: Settings, roles: ['viewer', 'editor', 'admin'] },
 ];
 
 export function Sidebar() {
