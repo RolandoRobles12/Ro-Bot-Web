@@ -358,6 +358,7 @@ export interface DataSource {
 
   // For type='property'
   hubspotProperties?: string[];   // List of HubSpot property names to fetch
+  hubspotObjectType?: string;     // HubSpot object type: deals, contacts, companies, tickets
 
   // For type='google_sheets'
   sheetId?: string;
@@ -365,6 +366,7 @@ export interface DataSource {
 
   // For type='api'
   apiEndpoint?: string;
+  apiMethod?: string;             // HTTP method: GET, POST
   apiHeaders?: Record<string, string>;
 
   // Date range
