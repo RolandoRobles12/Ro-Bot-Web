@@ -15,6 +15,12 @@ import {
   FileSpreadsheet,
   Globe,
   HelpCircle,
+  Plug,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -39,11 +45,12 @@ import type {
   DateRangeType,
 } from '@/types';
 
-type Tab = 'pipelines' | 'datasources' | 'general' | 'notifications';
+type Tab = 'pipelines' | 'datasources' | 'integrations' | 'general' | 'notifications';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'pipelines', label: 'Pipelines', icon: GitBranch, description: 'Configura tus pipelines de HubSpot' },
   { id: 'datasources', label: 'Fuentes de Datos', icon: Database, description: 'Define de dónde obtener información' },
+  { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI, Google Sheets y Slack' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, description: 'Alertas y avisos' },
 ];
@@ -160,8 +167,13 @@ export function Settings() {
     notifyOnCampaignSuccess: false,
     notifyOnCampaignFailure: true,
     notificationChannel: '',
+    openaiApiKey: '',
+    googleSheetsApiKey: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [showOpenAIKey, setShowOpenAIKey] = useState(false);
+  const [showSheetsKey, setShowSheetsKey] = useState(false);
+  const [savingIntegrations, setSavingIntegrations] = useState(false);
 
   useEffect(() => {
     loadWorkspaces();
@@ -220,6 +232,8 @@ export function Settings() {
           notifyOnCampaignSuccess: data.notifyOnCampaignSuccess ?? false,
           notifyOnCampaignFailure: data.notifyOnCampaignFailure ?? true,
           notificationChannel: data.notificationChannel || '',
+          openaiApiKey: data.openaiApiKey || '',
+          googleSheetsApiKey: data.googleSheetsApiKey || '',
         });
       }
     } catch (error) {
@@ -451,6 +465,31 @@ export function Settings() {
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  const saveIntegrations = async () => {
+    if (!selectedWorkspace?.id) return;
+    try {
+      setSavingIntegrations(true);
+      await workspaceSettingsService.upsert(selectedWorkspace.id, {
+        workspaceId: selectedWorkspace.id,
+        openaiApiKey: settingsForm.openaiApiKey || undefined,
+        googleSheetsApiKey: settingsForm.googleSheetsApiKey || undefined,
+        updatedAt: Timestamp.now(),
+      });
+      toast.success('Integraciones guardadas');
+      loadSettings();
+    } catch (error) {
+      toast.error('Error al guardar integraciones');
+      console.error(error);
+    } finally {
+      setSavingIntegrations(false);
+    }
+  };
+
+  const maskApiKey = (key: string): string => {
+    if (!key || key.length < 8) return key;
+    return key.substring(0, 4) + '•'.repeat(key.length - 8) + key.substring(key.length - 4);
   };
 
   const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspace?.id);
@@ -719,6 +758,186 @@ export function Settings() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ==================== INTEGRATIONS TAB ==================== */}
+        {activeTab === 'integrations' && (
+          <div className="space-y-6">
+            {/* OpenAI */}
+            <Card className="p-6">
+              <div className="flex items-start space-x-4 mb-6">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">OpenAI</h2>
+                  <p className="text-sm text-gray-500">
+                    Genera y reescribe mensajes automaticamente con IA. Se usa en campanas con la opcion de IA habilitada.
+                  </p>
+                </div>
+                <div className="ml-auto flex-shrink-0">
+                  {settingsForm.openaiApiKey ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Configurado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      No configurado
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="max-w-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API Key de OpenAI
+                </label>
+                <div className="relative">
+                  <input
+                    type={showOpenAIKey ? 'text' : 'password'}
+                    value={settingsForm.openaiApiKey}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({ ...prev, openaiApiKey: e.target.value }))
+                    }
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2 pr-20 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowOpenAIKey(!showOpenAIKey)}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                      title={showOpenAIKey ? 'Ocultar' : 'Mostrar'}
+                    >
+                      {showOpenAIKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Modelo utilizado: <code className="bg-gray-100 px-1 py-0.5 rounded">gpt-4o-mini</code>. La clave se almacena de forma segura en Firestore.
+                </p>
+              </div>
+            </Card>
+
+            {/* Google Sheets */}
+            <Card className="p-6">
+              <div className="flex items-start space-x-4 mb-6">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Google Sheets</h2>
+                  <p className="text-sm text-gray-500">
+                    Lee datos de hojas de calculo para usarlos como fuente de datos en campanas.
+                  </p>
+                </div>
+                <div className="ml-auto flex-shrink-0">
+                  {settingsForm.googleSheetsApiKey ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Configurado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      No configurado
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="max-w-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API Key de Google Sheets
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSheetsKey ? 'text' : 'password'}
+                    value={settingsForm.googleSheetsApiKey}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({ ...prev, googleSheetsApiKey: e.target.value }))
+                    }
+                    placeholder="AIza..."
+                    className="w-full px-3 py-2 pr-20 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowSheetsKey(!showSheetsKey)}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                      title={showSheetsKey ? 'Ocultar' : 'Mostrar'}
+                    >
+                      {showSheetsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Clave API de Google Cloud con permisos de Google Sheets API habilitados.
+                </p>
+              </div>
+            </Card>
+
+            {/* Slack Interactivity */}
+            <Card className="p-6">
+              <div className="flex items-start space-x-4 mb-6">
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Globe className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Slack Interactividad</h2>
+                  <p className="text-sm text-gray-500">
+                    Permite que los botones en mensajes de Slack (feedback, tips, progreso) funcionen correctamente.
+                  </p>
+                </div>
+              </div>
+
+              <div className="max-w-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  URL de Interactividad (Request URL)
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={`https://us-central1-${import.meta.env.VITE_FIREBASE_PROJECT_ID || '<project-id>'}.cloudfunctions.net/handleSlackInteraction`}
+                    readOnly
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm text-gray-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `https://us-central1-${import.meta.env.VITE_FIREBASE_PROJECT_ID || ''}.cloudfunctions.net/handleSlackInteraction`;
+                      navigator.clipboard.writeText(url);
+                      toast.success('URL copiada');
+                    }}
+                    className="p-2 text-gray-400 hover:text-slack-purple hover:bg-purple-50 rounded-lg"
+                    title="Copiar URL"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-xs text-blue-700">
+                    <strong>Configuracion en Slack:</strong> Ve a tu app en <code>api.slack.com</code> &rarr;
+                    <em> Interactivity &amp; Shortcuts</em> &rarr; activa <em>Interactivity</em> y pega esta URL en
+                    <em> Request URL</em>.
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={saveIntegrations} disabled={savingIntegrations}>
+                {savingIntegrations ? 'Guardando...' : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Guardar Integraciones
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         )}
 
