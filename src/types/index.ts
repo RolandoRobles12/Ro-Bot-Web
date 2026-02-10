@@ -250,6 +250,11 @@ export interface WorkspaceSettings {
   notifyOnCampaignSuccess: boolean;
   notifyOnCampaignFailure: boolean;
   notificationChannel?: string;   // Slack channel for notifications
+  // Integrations
+  openaiApiKey?: string;           // OpenAI API key for AI message generation
+  googleSheetsApiKey?: string;     // Google Sheets API key
+  googleSheetsCredentials?: any;   // Google service account JSON credentials
+  slackInteractivityUrl?: string;  // URL for Slack interactivity webhook (auto-generated)
   // General
   timezone: string;
   weekStartsOn: 0 | 1;            // 0 = Sunday, 1 = Monday

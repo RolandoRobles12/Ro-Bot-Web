@@ -15,6 +15,12 @@ import {
   FileSpreadsheet,
   Globe,
   HelpCircle,
+  Plug,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
