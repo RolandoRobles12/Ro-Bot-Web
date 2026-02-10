@@ -487,11 +487,6 @@ export function Settings() {
     }
   };
 
-  const maskApiKey = (key: string): string => {
-    if (!key || key.length < 8) return key;
-    return key.substring(0, 4) + '•'.repeat(key.length - 8) + key.substring(key.length - 4);
-  };
-
   const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspace?.id);
 
   return (
