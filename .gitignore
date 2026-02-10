@@ -36,6 +36,10 @@ ui-debug.log
 .env.production
 .env.*.local
 
+# Lock files
+package-lock.json
+functions/package-lock.json
+
 # Functions
 functions/node_modules
 functions/lib
