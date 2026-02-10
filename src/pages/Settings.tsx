@@ -454,7 +454,7 @@ export function Settings() {
         weekStartsOn: settingsForm.weekStartsOn,
         notifyOnCampaignSuccess: settingsForm.notifyOnCampaignSuccess,
         notifyOnCampaignFailure: settingsForm.notifyOnCampaignFailure,
-        notificationChannel: settingsForm.notificationChannel || undefined,
+        notificationChannel: settingsForm.notificationChannel || '',
         updatedAt: Timestamp.now(),
       });
       toast.success('Configuración guardada');
@@ -473,8 +473,8 @@ export function Settings() {
       setSavingIntegrations(true);
       await workspaceSettingsService.upsert(selectedWorkspace.id, {
         workspaceId: selectedWorkspace.id,
-        openaiApiKey: settingsForm.openaiApiKey || undefined,
-        googleSheetsApiKey: settingsForm.googleSheetsApiKey || undefined,
+        openaiApiKey: settingsForm.openaiApiKey || '',
+        googleSheetsApiKey: settingsForm.googleSheetsApiKey || '',
         updatedAt: Timestamp.now(),
       });
       toast.success('Integraciones guardadas');
