@@ -25,7 +25,8 @@ const externalFirebaseConfig = {
   appId: import.meta.env.VITE_EXTERNAL_FIREBASE_APP_ID,
 };
 
-const hasExternalConfig = !!externalFirebaseConfig.apiKey && !!externalFirebaseConfig.projectId;
+export const hasExternalConfig = !!externalFirebaseConfig.apiKey && !!externalFirebaseConfig.projectId;
+export const externalProjectId = externalFirebaseConfig.projectId || null;
 
 // Debug: Log config to verify env vars are loaded (remove in production)
 console.log('Firebase Config (Principal):', {

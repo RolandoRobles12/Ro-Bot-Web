@@ -425,6 +425,9 @@ export interface SalesUser {
   metaSolicitudes: number;      // Meta semanal de solicitudes
   metaVentas: number;           // Meta semanal de ventas en pesos
   pipeline?: string;            // HubSpot pipeline ID (default o específico)
+  // Configuración avanzada de pipeline
+  pipelineAdvancedStages?: string[];  // IDs de etapas consideradas "avanzadas" para ventas_avanzadas
+  realSalesProperty?: string;         // Propiedad HubSpot para fecha de desembolso (ventas reales)
   equipo?: string;              // Para kioscos: nombre del equipo
   gerenteId?: string;           // Para kioscos: ID del gerente
   promotores?: string[];        // Para kioscos: IDs de promotores
@@ -611,6 +614,16 @@ export interface MessageCampaign {
   workspaceId: string;
   name: string;
   description?: string;
+
+  // Campaign type
+  // 'standard': mensaje de texto con variantes (comportamiento actual)
+  // 'tarjeta_tactica': notificación de seguimiento de Tarjeta Táctica con
+  //   bloques Slack ricos, métricas de videollamadas y botones de feedback
+  campaignType?: 'standard' | 'tarjeta_tactica';
+
+  // Para campaignType='tarjeta_tactica': nombre de la tarjeta a notificar
+  // Valores: 'La Puerta' | 'El Pescado' | 'El Folleto' | 'WhatsApp' | 'El Rayo'
+  tarjetaNombre?: string;
 
   // Schedule
   scheduleSlots: CampaignScheduleSlot[];

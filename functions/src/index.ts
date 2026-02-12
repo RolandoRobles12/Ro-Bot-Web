@@ -8,6 +8,92 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ==========================================================================
+// =           FIREBASE EXTERNO - USUARIOS Y METAS                          =
+// ==========================================================================
+// Si se configura EXTERNAL_FIREBASE_PROJECT_ID y las credenciales de la
+// cuenta de servicio, los sales_users se leen desde el proyecto externo.
+// Configurar con: firebase functions:secrets:set EXTERNAL_FIREBASE_SERVICE_ACCOUNT
+// o en functions.config() con: firebase functions:config:set external.project_id="..."
+
+let externalDb: admin.firestore.Firestore | null = null;
+
+function getExternalDb(): admin.firestore.Firestore {
+  if (externalDb) return externalDb;
+
+  try {
+    const externalProjectId =
+      process.env.EXTERNAL_FIREBASE_PROJECT_ID ||
+      functions.config().external?.project_id;
+
+    const serviceAccountJson =
+      process.env.EXTERNAL_FIREBASE_SERVICE_ACCOUNT ||
+      functions.config().external?.service_account;
+
+    if (externalProjectId && serviceAccountJson) {
+      // Verificar si la app ya fue inicializada
+      const existingApp = admin.apps.find((a) => a?.name === 'external-users');
+      if (existingApp) {
+        externalDb = existingApp.firestore();
+      } else {
+        const serviceAccount = typeof serviceAccountJson === 'string'
+          ? JSON.parse(serviceAccountJson)
+          : serviceAccountJson;
+
+        const externalApp = admin.initializeApp(
+          {
+            credential: admin.credential.cert(serviceAccount),
+            projectId: externalProjectId,
+          },
+          'external-users'
+        );
+        externalDb = externalApp.firestore();
+      }
+      console.log(`External Firebase connected: ${externalProjectId}`);
+    }
+  } catch (err) {
+    console.warn('Could not initialize external Firebase, falling back to main db:', err);
+  }
+
+  return externalDb || db;
+}
+
+// Helper: obtener sales_users desde el DB correcto (externo si está configurado)
+async function getSalesUserDoc(userId: string): Promise<admin.firestore.DocumentSnapshot> {
+  const salesDb = getExternalDb();
+  const doc = await salesDb.collection('sales_users').doc(userId).get();
+  if (!doc.exists && salesDb !== db) {
+    // Fallback al DB principal
+    return db.collection('sales_users').doc(userId).get();
+  }
+  return doc;
+}
+
+async function querySalesUsers(
+  workspaceId: string,
+  tipo?: string
+): Promise<admin.firestore.QueryDocumentSnapshot[]> {
+  const salesDb = getExternalDb();
+  let q = salesDb
+    .collection('sales_users')
+    .where('workspaceId', '==', workspaceId)
+    .where('isActive', '==', true);
+  if (tipo) q = q.where('tipo', '==', tipo) as any;
+
+  const snapshot = await q.get();
+  if (snapshot.empty && salesDb !== db) {
+    // Fallback al DB principal
+    let fallbackQ = db
+      .collection('sales_users')
+      .where('workspaceId', '==', workspaceId)
+      .where('isActive', '==', true);
+    if (tipo) fallbackQ = fallbackQ.where('tipo', '==', tipo) as any;
+    const fallback = await fallbackQ.get();
+    return fallback.docs;
+  }
+  return snapshot.docs;
+}
+
+// ==========================================================================
 // =                         SHARED INTERFACES                              =
 // ==========================================================================
 
@@ -631,7 +717,7 @@ export const calculateSalesMetrics = functions.https.onCall(
     try {
       const { salesUserId, startDate, endDate } = data;
 
-      const salesUserDoc = await db.collection('sales_users').doc(salesUserId).get();
+      const salesUserDoc = await getSalesUserDoc(salesUserId);
       if (!salesUserDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Sales user not found');
       }
@@ -677,15 +763,20 @@ export const calculateSalesMetrics = functions.https.onCall(
       let ventasAvanzadas = 0;
       let ventasReales = 0;
 
-      const advancedStages =
-        pipeline === '76732496'
+      // Usar stages configurados en el usuario; si no, defaults por pipeline
+      const advancedStages: string[] = salesUser.pipelineAdvancedStages?.length
+        ? salesUser.pipelineAdvancedStages
+        : pipeline === '76732496'
           ? ['146251806', '146251807', '150228300']
           : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097'];
+
+      // Propiedad de desembolso configurable por usuario
+      const realSalesProp: string = salesUser.realSalesProperty || 'hs_v2_date_entered_33823866';
 
       deals.forEach((deal: any) => {
         const amount = parseFloat(deal.properties.amount || '0');
         const dealstage = deal.properties.dealstage;
-        const dateEnteredDesembolso = deal.properties.hs_v2_date_entered_33823866;
+        const dateEnteredDesembolso = deal.properties[realSalesProp];
 
         if (advancedStages.includes(dealstage)) {
           ventasAvanzadas += amount;
@@ -927,6 +1018,33 @@ async function executeCampaign(
 
   for (const recipient of recipients) {
     try {
+      // ----------------------------------------------------------------
+      // RAMA: Tarjeta Táctica - bloques Slack ricos con botones feedback
+      // ----------------------------------------------------------------
+      if (campaign.campaignType === 'tarjeta_tactica' && campaign.tarjetaNombre) {
+        await sendTarjetaTacticaNotification(
+          slackClient,
+          recipient,
+          campaign,
+          accessToken,
+          openaiApiKey
+        );
+        executionDetails.push({
+          userId: recipient.id,
+          userName: recipient.nombre,
+          channel: recipient.slackChannel,
+          status: 'sent',
+          messageSent: `[Tarjeta Táctica: ${campaign.tarjetaNombre}]`,
+          variantUsed: 'tarjeta_tactica',
+        });
+        successCount++;
+        continue;
+      }
+
+      // ----------------------------------------------------------------
+      // RAMA: campaña estándar (comportamiento original)
+      // ----------------------------------------------------------------
+
       // 5a. Fetch metrics for this recipient
       const metrics = await fetchRecipientMetrics(recipient, campaign.dataConfig, accessToken);
 
@@ -1042,6 +1160,216 @@ async function executeCampaign(
   console.log(`Campaign "${campaign.name}" executed: ${successCount} sent, ${failureCount} failed`);
 }
 
+// ==========================================================================
+// =          TARJETAS TÁCTICAS - NOTIFICACIÓN CON BLOQUES RICOS            =
+// ==========================================================================
+
+const TARJETAS_CONFIG: Record<string, {
+  emoji: string; horarioInicio: string; horarioFin: string; objetivo: string;
+  metaVideollamadas: number;
+}> = {
+  'La Puerta':  { emoji: '🚪', horarioInicio: '10:30', horarioFin: '11:15', objetivo: 'Saludo energético en la entrada', metaVideollamadas: 1 },
+  'El Pescado': { emoji: '🐟', horarioInicio: '11:15', horarioFin: '12:00', objetivo: 'Recuperación con pregunta clave', metaVideollamadas: 1 },
+  'El Folleto': { emoji: '📄', horarioInicio: '12:15', horarioFin: '12:45', objetivo: 'Material de apoyo y seguimiento', metaVideollamadas: 0 },
+  'WhatsApp':   { emoji: '📱', horarioInicio: '15:00', horarioFin: '15:30', objetivo: 'Personalización digital directa', metaVideollamadas: 1 },
+  'El Rayo':    { emoji: '⚡', horarioInicio: '18:00', horarioFin: '18:30', objetivo: 'Urgencia y cierre directo', metaVideollamadas: 1 },
+};
+
+const SECUENCIA_TARJETAS = ['La Puerta', 'El Pescado', 'El Folleto', 'WhatsApp', 'El Rayo'];
+const META_VIDEOLLAMADAS_DIA = 4;
+const META_VIDEOLLAMADAS_SEMANA = 20;
+
+async function fetchVideollamadasBA(
+  accessToken: string,
+  hubspotOwnerId: string,
+  pipeline: string,
+  videollamadasProp: string
+): Promise<{ dia: number; semana: number }> {
+  try {
+    // Rango del día actual en UTC (CDMX = UTC-6)
+    const now = new Date();
+    const hoyStr = now.toISOString().split('T')[0];
+    const diaInicio = new Date(`${hoyStr}T06:00:00Z`); // 00:00 CDMX
+    const diaFin   = new Date(`${hoyStr}T29:59:59Z`);  // 23:59 CDMX (día siguiente UTC)
+
+    // Inicio de semana (lunes)
+    const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1;
+    const semanaInicio = new Date(now);
+    semanaInicio.setDate(now.getDate() - dayOfWeek);
+    semanaInicio.setHours(6, 0, 0, 0);
+    const semanaFin = new Date(semanaInicio);
+    semanaFin.setDate(semanaInicio.getDate() + 6);
+    semanaFin.setHours(29, 59, 59, 999);
+
+    const dealsResp = await axios.post(
+      'https://api.hubapi.com/crm/v3/objects/deals/search',
+      {
+        filterGroups: [{
+          filters: [
+            { propertyName: 'createdate', operator: 'GTE', value: semanaInicio.toISOString() },
+            { propertyName: 'createdate', operator: 'LTE', value: semanaFin.toISOString() },
+            { propertyName: 'hubspot_owner_id', operator: 'EQ', value: hubspotOwnerId },
+            { propertyName: 'pipeline', operator: 'EQ', value: pipeline },
+          ],
+        }],
+        properties: [videollamadasProp],
+        limit: 100,
+      },
+      { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    let dia = 0;
+    let semana = 0;
+    for (const deal of (dealsResp.data.results || [])) {
+      const prop = deal.properties?.[videollamadasProp];
+      if (!prop) continue;
+      semana++;
+      const propDate = new Date(prop);
+      if (propDate >= diaInicio && propDate <= diaFin) dia++;
+    }
+    return { dia, semana };
+  } catch {
+    return { dia: 0, semana: 0 };
+  }
+}
+
+async function sendTarjetaTacticaNotification(
+  slackClient: WebClient,
+  recipient: any,
+  campaign: any,
+  accessToken: string | null,
+  openaiApiKey: string | null
+): Promise<void> {
+  const tarjetaNombre: string = campaign.tarjetaNombre;
+  const tarjeta = TARJETAS_CONFIG[tarjetaNombre];
+  if (!tarjeta) {
+    console.warn(`Tarjeta no encontrada: ${tarjetaNombre}`);
+    return;
+  }
+
+  // Obtener videollamadas del día y semana
+  let videollamadasDia = 0;
+  let videollamadasSemana = 0;
+  if (accessToken && recipient.hubspotOwnerId) {
+    const pipeline = recipient.pipeline || (recipient.tipo === 'ba' ? '76732496' : 'default');
+    const videollamadasProp = recipient.realSalesProperty?.includes('videollamada')
+      ? recipient.realSalesProperty
+      : 'hs_v2_date_entered_146251806'; // default BA videollamadas
+    const vl = await fetchVideollamadasBA(accessToken, recipient.hubspotOwnerId, pipeline, videollamadasProp);
+    videollamadasDia = vl.dia;
+    videollamadasSemana = vl.semana;
+  }
+
+  const progresoDia = Math.round((videollamadasDia / META_VIDEOLLAMADAS_DIA) * 100);
+  const progresoSemana = Math.round((videollamadasSemana / META_VIDEOLLAMADAS_SEMANA) * 100);
+
+  // Generar mensaje motivador con IA (si está disponible)
+  let mensajeCoach = '';
+  const siguienteIdx = SECUENCIA_TARJETAS.indexOf(tarjetaNombre) + 1;
+  const siguienteTarjeta = siguienteIdx < SECUENCIA_TARJETAS.length
+    ? `${TARJETAS_CONFIG[SECUENCIA_TARJETAS[siguienteIdx]].emoji} ${SECUENCIA_TARJETAS[siguienteIdx]} (${TARJETAS_CONFIG[SECUENCIA_TARJETAS[siguienteIdx]].horarioInicio})`
+    : null;
+
+  if (openaiApiKey) {
+    try {
+      const prompt = (
+        `Tarjeta ejecutada: ${tarjeta.emoji} ${tarjetaNombre} (${tarjeta.horarioInicio}-${tarjeta.horarioFin}). ` +
+        `Embajador: ${recipient.nombre}. ` +
+        `Videollamadas hoy: ${videollamadasDia}/${META_VIDEOLLAMADAS_DIA} (${progresoDia}%). ` +
+        `Videollamadas semana: ${videollamadasSemana}/${META_VIDEOLLAMADAS_SEMANA} (${progresoSemana}%). ` +
+        (siguienteTarjeta ? `Siguiente tarjeta: ${siguienteTarjeta}. ` : 'Última tarjeta del día. ') +
+        'Genera mensaje motivador máximo 2 líneas, menciona la tarjeta ejecutada, progreso real y máximo 2 emojis.'
+      );
+      const aiResp = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'Eres un coach experto en Tarjetas Tácticas para Embajadores Aviva Tu Compra. Escribe en español informal, mensajes cortos y motivadores.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 150,
+        },
+        { headers: { Authorization: `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' } }
+      );
+      mensajeCoach = aiResp.data.choices[0].message.content.trim();
+    } catch {
+      // fallback generado abajo
+    }
+  }
+
+  if (!mensajeCoach) {
+    if (videollamadasDia >= META_VIDEOLLAMADAS_DIA) {
+      mensajeCoach = `¡Excelente ${recipient.nombre}! ${tarjeta.emoji} ${tarjetaNombre} completada. Meta del día lograda con ${videollamadasDia} videollamadas 🎯`;
+    } else {
+      const faltantes = META_VIDEOLLAMADAS_DIA - videollamadasDia;
+      mensajeCoach = `¡Sigue así ${recipient.nombre}! ${tarjeta.emoji} ${tarjetaNombre} ejecutada. Faltan ${faltantes} videollamadas para tu meta diaria 💪`;
+    }
+  }
+
+  // Determinar estado
+  let estadoEmoji = '🔴';
+  let estadoTexto = 'Requiere acción';
+  if (videollamadasDia >= META_VIDEOLLAMADAS_DIA)  { estadoEmoji = '🎯'; estadoTexto = 'Meta diaria cumplida'; }
+  else if (videollamadasDia >= 2)                   { estadoEmoji = '💪'; estadoTexto = 'Buen avance'; }
+  else if (videollamadasDia >= 1)                   { estadoEmoji = '⚡'; estadoTexto = 'En progreso'; }
+
+  // Botones de feedback
+  const tarjetaKey = tarjetaNombre.toLowerCase().replace(/ /g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const feedbackButtons = [
+    { type: 'button', text: { type: 'plain_text', text: '🟢 Excelente' }, action_id: `feedback_${tarjetaKey}_excelente`, style: 'primary' },
+    { type: 'button', text: { type: 'plain_text', text: '🟡 Regular' }, action_id: `feedback_${tarjetaKey}_regular` },
+    { type: 'button', text: { type: 'plain_text', text: '🔴 Mal' }, action_id: `feedback_${tarjetaKey}_mal`, style: 'danger' },
+  ];
+  const actionButtons = [
+    { type: 'button', text: { type: 'plain_text', text: '💡 Tips' }, action_id: `tips_${tarjetaKey}` },
+    { type: 'button', text: { type: 'plain_text', text: '📊 Ver progreso' }, action_id: 'ver_progreso_dia' },
+  ];
+
+  const blocks: any[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${tarjeta.emoji} ${tarjetaNombre.toUpperCase()} - SEGUIMIENTO` },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${mensajeCoach}*` },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*📞 Videollamadas hoy:* ${videollamadasDia}/${META_VIDEOLLAMADAS_DIA} (${progresoDia}%)` },
+        { type: 'mrkdwn', text: `*📊 Estado:* ${estadoTexto} ${estadoEmoji}` },
+      ],
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*📈 Semana:* ${videollamadasSemana}/${META_VIDEOLLAMADAS_SEMANA} (${progresoSemana}%)` },
+        { type: 'mrkdwn', text: `*⏰ Ejecutada:* ${tarjeta.horarioInicio}-${tarjeta.horarioFin}` },
+      ],
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*🎯 Objetivo:* ${tarjeta.objetivo}\n*📝 ¿Cómo te fue con esta tarjeta?*` },
+    },
+    { type: 'actions', elements: feedbackButtons },
+    { type: 'actions', elements: actionButtons },
+    {
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: siguienteTarjeta ? `🔜 Siguiente: ${siguienteTarjeta}` : '✅ Último seguimiento del día. ¡Excelente trabajo!' }],
+    },
+  ];
+
+  const mentionPrefix = recipient.slackUserId ? `<@${recipient.slackUserId}> ` : '';
+  await slackClient.chat.postMessage({
+    channel: recipient.slackChannel,
+    text: `${mentionPrefix}${tarjeta.emoji} ${tarjetaNombre} - ${recipient.nombre}`,
+    blocks,
+  });
+}
+
 async function resolveRecipients(
   recipientConfig: any,
   workspaceId: string
@@ -1056,14 +1384,8 @@ async function resolveRecipients(
 
     const allUsers: any[] = [];
     for (const tipo of types) {
-      const snapshot = await db
-        .collection('sales_users')
-        .where('workspaceId', '==', workspaceId)
-        .where('tipo', '==', tipo)
-        .where('isActive', '==', true)
-        .get();
-
-      snapshot.docs.forEach((d) => allUsers.push({ id: d.id, ...d.data() }));
+      const docs = await querySalesUsers(workspaceId, tipo);
+      docs.forEach((d) => allUsers.push({ id: d.id, ...d.data() }));
     }
     return allUsers;
   }
@@ -1072,7 +1394,7 @@ async function resolveRecipients(
     const userIds: string[] = recipientConfig.specificUserIds || [];
     const users: any[] = [];
     for (const userId of userIds) {
-      const userDoc = await db.collection('sales_users').doc(userId).get();
+      const userDoc = await getSalesUserDoc(userId);
       if (userDoc.exists) {
         users.push({ id: userDoc.id, ...userDoc.data() });
       }
@@ -1134,11 +1456,14 @@ async function fetchRecipientMetrics(
       }
 
       if (dataConfig.fetchVentasAvanzadas) {
-        const advancedStages = dataConfig.customStages || (
-          pipeline === '76732496'
-            ? ['146251806', '146251807', '150228300']
-            : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097']
-        );
+        // Prioridad: stages del usuario > stages de la campaña > defaults por pipeline
+        const advancedStages: string[] = recipient.pipelineAdvancedStages?.length
+          ? recipient.pipelineAdvancedStages
+          : dataConfig.customStages?.length
+            ? dataConfig.customStages
+            : pipeline === '76732496'
+              ? ['146251806', '146251807', '150228300']
+              : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097'];
 
         metrics.ventas_avanzadas = deals.reduce((total: number, deal: any) => {
           const amount = parseFloat(deal.properties.amount || '0');
@@ -1147,9 +1472,11 @@ async function fetchRecipientMetrics(
       }
 
       if (dataConfig.fetchVentasReales) {
+        // Propiedad configurable por usuario; default al standard de Aviva
+        const realSalesProp: string = recipient.realSalesProperty || 'hs_v2_date_entered_33823866';
         metrics.ventas = deals.reduce((total: number, deal: any) => {
           const amount = parseFloat(deal.properties.amount || '0');
-          const dateEntered = deal.properties.hs_v2_date_entered_33823866;
+          const dateEntered = deal.properties[realSalesProp];
           if (dateEntered) {
             const d = new Date(dateEntered);
             if (d >= new Date(startDate) && d <= new Date(endDate)) {
@@ -1321,13 +1648,22 @@ export const handleSlackInteraction = functions.https.onRequest(
 
         const actionId: string = action.action_id || '';
 
-        // Find the sales user by Slack ID
-        const salesUserSnapshot = await db
+        // Find the sales user by Slack ID (usar DB externo si está configurado)
+        const salesDb = getExternalDb();
+        let salesUserSnapshot = await salesDb
           .collection('sales_users')
           .where('slackUserId', '==', userId)
           .where('isActive', '==', true)
           .limit(1)
           .get();
+        if (salesUserSnapshot.empty && salesDb !== db) {
+          salesUserSnapshot = await db
+            .collection('sales_users')
+            .where('slackUserId', '==', userId)
+            .where('isActive', '==', true)
+            .limit(1)
+            .get();
+        }
 
         const salesUser = salesUserSnapshot.empty
           ? null
@@ -1393,12 +1729,72 @@ export const handleSlackInteraction = functions.https.onRequest(
           responseText = `<@${userId}> ${tipsMap[tarjetaParte] || '💡 Mantén enfoque, energía positiva y seguimiento constante.'}`;
         }
 
-        // Handle progress view
+        // Handle progress view - consulta HubSpot en tiempo real
         else if (actionId === 'ver_progreso_dia') {
-          if (salesUser && (salesUser as any).hubspotOwnerId) {
-            responseText = `<@${userId}> 📊 Consulta tu progreso detallado en la plataforma web de Ro-Bot.`;
+          if (salesUser && (salesUser as any).hubspotOwnerId && responseToken) {
+            try {
+              const su = salesUser as any;
+              const workspaceId = su.workspaceId;
+              const hubspotConnections = await db
+                .collection('hubspot_connections')
+                .where('workspaceId', '==', workspaceId)
+                .where('isActive', '==', true)
+                .limit(1)
+                .get();
+
+              if (!hubspotConnections.empty) {
+                const hsToken = hubspotConnections.docs[0].data().accessToken;
+                const pipeline = su.pipeline || (su.tipo === 'ba' ? '76732496' : 'default');
+                const videollamadasProp = su.realSalesProperty?.includes('videollamada')
+                  ? su.realSalesProperty : 'hs_v2_date_entered_146251806';
+                const vl = await fetchVideollamadasBA(hsToken, su.hubspotOwnerId, pipeline, videollamadasProp);
+
+                const progDia = Math.round((vl.dia / META_VIDEOLLAMADAS_DIA) * 100);
+                const progSem = Math.round((vl.semana / META_VIDEOLLAMADAS_SEMANA) * 100);
+
+                // Determinar tarjetas ejecutadas vs pendientes
+                const hora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Mexico_City' });
+                const ejecutadas = SECUENCIA_TARJETAS.filter((t) => hora >= (TARJETAS_CONFIG[t]?.horarioFin || '99:99'));
+                const pendientes = SECUENCIA_TARJETAS.filter((t) => hora < (TARJETAS_CONFIG[t]?.horarioInicio || '00:00'));
+
+                const slackProgressClient = new WebClient(responseToken);
+                await slackProgressClient.chat.postMessage({
+                  channel,
+                  text: `📊 Progreso del día - ${su.nombre}`,
+                  blocks: [
+                    { type: 'header', text: { type: 'plain_text', text: `📊 PROGRESO DIARIO - ${(su.nombre || '').toUpperCase()}` } },
+                    {
+                      type: 'section',
+                      fields: [
+                        { type: 'mrkdwn', text: `*📞 Hoy:* ${vl.dia}/${META_VIDEOLLAMADAS_DIA} (${progDia}%)` },
+                        { type: 'mrkdwn', text: `*📈 Semana:* ${vl.semana}/${META_VIDEOLLAMADAS_SEMANA} (${progSem}%)` },
+                      ],
+                    },
+                    { type: 'divider' },
+                    ...(ejecutadas.length ? [{
+                      type: 'section',
+                      text: { type: 'mrkdwn', text: `*✅ Ejecutadas:* ${ejecutadas.map((t) => `${TARJETAS_CONFIG[t].emoji} ${t}`).join(' → ')}` },
+                    }] : []),
+                    ...(pendientes.length ? [{
+                      type: 'section',
+                      text: { type: 'mrkdwn', text: `*⏳ Pendientes:*\n${pendientes.map((t) => `• ${TARJETAS_CONFIG[t].emoji} ${t} (${TARJETAS_CONFIG[t].horarioInicio})`).join('\n')}` },
+                    }] : [{
+                      type: 'section',
+                      text: { type: 'mrkdwn', text: '*🎯 ¡Todas las tarjetas del día completadas!*' },
+                    }]),
+                    { type: 'context', elements: [{ type: 'mrkdwn', text: `⚡ El Rayo: máxima conversión 20-25% | 📅 ${new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' })}` }] },
+                  ],
+                });
+                responseToken = null; // ya enviamos la respuesta
+              } else {
+                responseText = `<@${userId}> 📊 Videollamadas hoy: conectando... Revisa la plataforma web para más detalles.`;
+              }
+            } catch (progressErr) {
+              console.error('Error obteniendo progreso:', progressErr);
+              responseText = `<@${userId}> 📊 Error obteniendo progreso. Inténtalo más tarde.`;
+            }
           } else {
-            responseText = `<@${userId}> 📊 Consulta tu progreso en la plataforma web.`;
+            responseText = `<@${userId}> 📊 Consulta tu progreso en la plataforma web de Ro-Bot.`;
           }
         }
 
