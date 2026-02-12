@@ -425,6 +425,9 @@ export interface SalesUser {
   metaSolicitudes: number;      // Meta semanal de solicitudes
   metaVentas: number;           // Meta semanal de ventas en pesos
   pipeline?: string;            // HubSpot pipeline ID (default o específico)
+  // Configuración avanzada de pipeline
+  pipelineAdvancedStages?: string[];  // IDs de etapas consideradas "avanzadas" para ventas_avanzadas
+  realSalesProperty?: string;         // Propiedad HubSpot para fecha de desembolso (ventas reales)
   equipo?: string;              // Para kioscos: nombre del equipo
   gerenteId?: string;           // Para kioscos: ID del gerente
   promotores?: string[];        // Para kioscos: IDs de promotores
@@ -580,8 +583,12 @@ export interface CampaignDataConfig {
   fetchVideollamadas: boolean;        // For BAs
   calculatePerformanceCategory: boolean;
   dateRange: 'current_week' | 'last_week' | 'current_month' | 'today';
-  customPipeline?: string;            // Override pipeline ID
-  customStages?: string[];            // Override advanced stage IDs
+  customPipeline?: string;            // Override pipeline ID (legacy)
+  customStages?: string[];            // Override advanced stage IDs (legacy)
+  // Fuente de datos configurada en /data-sources.
+  // Cuando se especifica, el motor de campañas usa el pipeline/stages/dateRange
+  // definidos en el DataSource entity en lugar de los valores de arriba.
+  dataSourceId?: string;
 }
 
 /**
@@ -611,6 +618,16 @@ export interface MessageCampaign {
   workspaceId: string;
   name: string;
   description?: string;
+
+  // Campaign type
+  // 'standard': mensaje de texto con variantes (comportamiento actual)
+  // 'tarjeta_tactica': notificación de seguimiento de Tarjeta Táctica con
+  //   bloques Slack ricos, métricas de videollamadas y botones de feedback
+  campaignType?: 'standard' | 'tarjeta_tactica';
+
+  // Para campaignType='tarjeta_tactica': nombre de la tarjeta a notificar
+  // Valores: 'La Puerta' | 'El Pescado' | 'El Folleto' | 'WhatsApp' | 'El Rayo'
+  tarjetaNombre?: string;
 
   // Schedule
   scheduleSlots: CampaignScheduleSlot[];

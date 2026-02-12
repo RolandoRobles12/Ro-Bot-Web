@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
   Database,
@@ -21,7 +22,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Copy,
+  ServerCog,
+  ChevronRight,
 } from 'lucide-react';
+import { hasExternalConfig, externalProjectId } from '@/config/firebase';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
@@ -45,12 +49,12 @@ import type {
   DateRangeType,
 } from '@/types';
 
-type Tab = 'pipelines' | 'datasources' | 'integrations' | 'general' | 'notifications';
+type Tab = 'pipelines' | 'integrations' | 'general' | 'notifications' | 'external_db';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'pipelines', label: 'Pipelines', icon: GitBranch, description: 'Configura tus pipelines de HubSpot' },
-  { id: 'datasources', label: 'Fuentes de Datos', icon: Database, description: 'Define de dónde obtener información' },
   { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI, Google Sheets y Slack' },
+  { id: 'external_db', label: 'Firebase Externo', icon: ServerCog, description: 'Usuarios y metas desde otro proyecto Firebase' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, description: 'Alertas y avisos' },
 ];
@@ -140,6 +144,7 @@ const createEmptyVariable = (): DataSourceVariable => ({
 });
 
 export function Settings() {
+  const navigate = useNavigate();
   const { selectedWorkspace } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>('pipelines');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
@@ -635,125 +640,25 @@ export function Settings() {
           </div>
         )}
 
-        {/* ==================== DATA SOURCES TAB ==================== */}
-        {activeTab === 'datasources' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Fuentes de Datos</h2>
-                <p className="text-sm text-gray-500">
-                  Configura de dónde se obtienen los datos para tus campañas
+        {/* ============== Fuentes de Datos — banner de acceso rápido ============== */}
+        {activeTab === 'pipelines' && (
+          <button
+            onClick={() => navigate('/data-sources')}
+            className="w-full flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 bg-blue-200 rounded-lg flex items-center justify-center">
+                <Database className="w-5 h-5 text-blue-700" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-blue-800">Fuentes de Datos</p>
+                <p className="text-xs text-blue-600">
+                  Gestiona las métricas y variables que alimentan tus campañas
                 </p>
               </div>
-              <Button onClick={() => openDataSourceModal()}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Fuente
-              </Button>
             </div>
-
-            {/* Info card */}
-            <Card className="p-4 bg-blue-50 border-blue-200">
-              <div className="flex items-start space-x-3">
-                <HelpCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-                <div>
-                  <h3 className="font-medium text-blue-800">¿Qué son las fuentes de datos?</h3>
-                  <p className="text-sm text-blue-700 mt-1">
-                    Las fuentes de datos definen de dónde se obtiene la información para tus campañas.
-                    Cada fuente exporta variables que puedes usar en tus mensajes como{' '}
-                    <code className="bg-blue-100 px-1 rounded">{'{{variable}}'}</code>.
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Empty state */}
-            {dataSources.length === 0 && (
-              <Card className="p-12 text-center">
-                <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Sin fuentes de datos
-                </h3>
-                <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                  Crea fuentes de datos para usar métricas de pipelines, propiedades de HubSpot,
-                  Google Sheets u otras fuentes en tus campañas.
-                </p>
-                <Button onClick={() => openDataSourceModal()}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Crear primera fuente
-                </Button>
-              </Card>
-            )}
-
-            {/* Data sources list */}
-            {dataSources.length > 0 && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {dataSources.map((ds) => {
-                  const typeInfo = DATA_SOURCE_TYPES.find((t) => t.value === ds.type);
-                  const linkedPipeline = pipelines.find((p) => p.id === ds.pipelineId);
-                  return (
-                    <Card
-                      key={ds.id}
-                      className="p-5 hover:shadow-lg transition-shadow cursor-pointer"
-                      onClick={() => openDataSourceModal(ds)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                            {typeInfo && <typeInfo.icon className="w-5 h-5 text-gray-600" />}
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{ds.name}</h3>
-                            <p className="text-xs text-gray-500">{typeInfo?.label}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteDataSource(ds.id);
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {ds.description && (
-                        <p className="text-sm text-gray-500 mt-2 line-clamp-2">{ds.description}</p>
-                      )}
-
-                      {/* Pipeline link */}
-                      {linkedPipeline && (
-                        <div className="mt-3 flex items-center space-x-2 text-xs text-gray-500">
-                          <GitBranch className="w-3 h-3" />
-                          <span>{linkedPipeline.name}</span>
-                        </div>
-                      )}
-
-                      {/* Variables */}
-                      <div className="mt-3 flex flex-wrap gap-1">
-                        {ds.variables.slice(0, 4).map((v) => (
-                          <span
-                            key={v.key}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 font-mono"
-                          >
-                            {`{{${v.key}}}`}
-                          </span>
-                        ))}
-                        {ds.variables.length > 4 && (
-                          <span className="text-xs text-gray-400">
-                            +{ds.variables.length - 4} más
-                          </span>
-                        )}
-                        {ds.variables.length === 0 && (
-                          <span className="text-xs text-gray-400">Sin variables definidas</span>
-                        )}
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            <ChevronRight className="w-5 h-5 text-blue-500" />
+          </button>
         )}
 
         {/* ==================== INTEGRATIONS TAB ==================== */}
@@ -1565,6 +1470,166 @@ export function Settings() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ==================== EXTERNAL DB TAB (inline, no modal) ==================== */}
+      {activeTab === 'external_db' && (
+        <div className="space-y-6">
+          {/* Estado de conexión */}
+          <Card className="p-6">
+            <div className="flex items-start space-x-4 mb-6">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${hasExternalConfig ? 'bg-green-100' : 'bg-gray-100'}`}>
+                <ServerCog className={`w-5 h-5 ${hasExternalConfig ? 'text-green-600' : 'text-gray-400'}`} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-gray-900">Firebase Externo — Usuarios y Metas</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Los <strong>SalesUsers</strong> (kioscos, ATN, BAs, alianzas) y sus metas semanales se leen
+                  desde otro proyecto Firebase en lugar del proyecto principal de Ro-Bot.
+                  Esto permite que los datos de usuarios ya existentes en tu sistema sean la fuente de verdad.
+                </p>
+              </div>
+              <div className="ml-auto flex-shrink-0">
+                {hasExternalConfig ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Conectado
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                    No configurado
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {hasExternalConfig ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center space-x-2 mb-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-800">Proyecto externo activo</span>
+                </div>
+                <p className="text-sm text-green-700">
+                  Conectado al proyecto: <code className="bg-green-100 px-1.5 py-0.5 rounded font-mono text-xs">{externalProjectId}</code>
+                </p>
+                <p className="text-xs text-green-600 mt-1">
+                  La colección <code className="bg-green-100 px-1 py-0.5 rounded">sales_users</code> se lee desde este proyecto.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex items-center space-x-2 mb-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-medium text-amber-800">Variables de entorno no detectadas</span>
+                </div>
+                <p className="text-sm text-amber-700">
+                  Los usuarios se están leyendo desde el proyecto principal de Ro-Bot.
+                  Para usar un proyecto externo, agrega las variables de entorno a tu archivo <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">.env.local</code>.
+                </p>
+              </div>
+            )}
+          </Card>
+
+          {/* Instrucciones de configuración */}
+          <Card className="p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Database className="w-4 h-4 text-slack-purple" />
+              <span>Configuración — Frontend (.env.local)</span>
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Agrega estas variables a tu archivo <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-xs">.env.local</code> (en la raíz del proyecto):
+            </p>
+            <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs text-gray-100 space-y-1 overflow-x-auto">
+              <p className="text-gray-400"># Firebase Externo - Usuarios y Metas</p>
+              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_API_KEY</span>=<span className="text-green-400">tu_api_key</span></p>
+              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_AUTH_DOMAIN</span>=<span className="text-green-400">tu_proyecto.firebaseapp.com</span></p>
+              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_PROJECT_ID</span>=<span className="text-green-400">tu_project_id</span></p>
+              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_STORAGE_BUCKET</span>=<span className="text-green-400">tu_proyecto.appspot.com</span></p>
+              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_MESSAGING_SENDER_ID</span>=<span className="text-green-400">tu_sender_id</span></p>
+              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_APP_ID</span>=<span className="text-green-400">tu_app_id</span></p>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              Después de agregar las variables, reinicia el servidor de desarrollo (<code className="bg-gray-100 px-1 py-0.5 rounded">npm run dev</code>) para que los cambios tomen efecto.
+            </p>
+          </Card>
+
+          {/* Instrucciones Cloud Functions */}
+          <Card className="p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Globe className="w-4 h-4 text-slack-purple" />
+              <span>Configuración — Cloud Functions (lectura server-side)</span>
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Para que las campañas y notificaciones programadas también lean los usuarios desde el proyecto externo,
+              configura el <strong>ID del proyecto</strong> y la <strong>cuenta de servicio</strong> en las Cloud Functions:
+            </p>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-medium text-gray-700 mb-1">Opción A — Variables de entorno de funciones:</p>
+                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-100 overflow-x-auto">
+                  <p className="text-gray-400"># En tu terminal, desde la carpeta /functions:</p>
+                  <p>firebase functions:config:set \</p>
+                  <p className="pl-4">external.project_id=<span className="text-green-400">"tu_project_id"</span> \</p>
+                  <p className="pl-4">external.service_account=<span className="text-green-400">'{"{"}"type":"service_account",...{"}"}'</span></p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-700 mb-1">Opción B — Secret Manager (recomendado para producción):</p>
+                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-100 overflow-x-auto">
+                  <p><span className="text-yellow-400">firebase secrets:set</span> EXTERNAL_FIREBASE_SERVICE_ACCOUNT</p>
+                  <p className="text-gray-400 mt-1"># Pega el JSON de la cuenta de servicio cuando se solicite</p>
+                  <p className="mt-1"><span className="text-yellow-400">firebase secrets:set</span> EXTERNAL_FIREBASE_PROJECT_ID</p>
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-700">
+                  <strong>¿Cómo obtener el JSON de la cuenta de servicio?</strong><br />
+                  Firebase Console → Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada.
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Estructura esperada en Firestore externo */}
+          <Card className="p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <Layers className="w-4 h-4 text-slack-purple" />
+              <span>Estructura esperada en Firestore externo</span>
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              La colección <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-xs">sales_users</code> debe tener documentos con estos campos:
+            </p>
+            <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs text-gray-800 overflow-x-auto">
+              <pre>{`{
+  "workspaceId": "id_del_workspace_en_robot",
+  "nombre": "Nombre del usuario",
+  "tipo": "kiosco" | "atn" | "ba" | "alianza",
+  "hubspotOwnerId": "123456",
+  "slackUserId": "U08CVH2056U",
+  "slackChannel": "C09PH8BMVUJ",
+  "metaSolicitudes": 20,
+  "metaVentas": 150000,
+  "pipeline": "default" | "76732496",
+
+  // Opcional: stages avanzados configurables
+  "pipelineAdvancedStages": ["69785436", "33642516"],
+
+  // Opcional: propiedad de desembolso
+  "realSalesProperty": "hs_v2_date_entered_33823866",
+
+  // Para kioscos: promotores
+  "promotores": ["hubspot_id_promotor1", "hubspot_id_promotor2"],
+
+  "isActive": true
+}`}</pre>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              Los campos <code className="bg-gray-100 px-1 py-0.5 rounded">pipelineAdvancedStages</code> y <code className="bg-gray-100 px-1 py-0.5 rounded">realSalesProperty</code> son opcionales.
+              Si no se especifican, se usan los valores por defecto según el tipo de pipeline.
+            </p>
+          </Card>
         </div>
       )}
     </div>

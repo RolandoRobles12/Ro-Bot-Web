@@ -362,17 +362,19 @@ export const ruleService = {
 // ==========================================================================
 
 // Sales User services
+// Lee/escribe en usersDb (proyecto Firebase externo si está configurado)
+// para que usuarios y metas vivan en el proyecto Firebase del cliente.
 export const salesUserService = {
-  get: (userId: string) => getDocument<SalesUser>('sales_users', userId),
+  get: (userId: string) => getUserDocument<SalesUser>('sales_users', userId),
   getByWorkspace: (workspaceId: string) =>
-    getDocuments<SalesUser>(
+    getUserDocuments<SalesUser>(
       'sales_users',
       where('workspaceId', '==', workspaceId),
       where('isActive', '==', true),
       orderBy('nombre', 'asc')
     ),
   getByType: (workspaceId: string, tipo: string) =>
-    getDocuments<SalesUser>(
+    getUserDocuments<SalesUser>(
       'sales_users',
       where('workspaceId', '==', workspaceId),
       where('tipo', '==', tipo),
@@ -380,18 +382,22 @@ export const salesUserService = {
       orderBy('nombre', 'asc')
     ),
   create: (data: Omit<SalesUser, 'id'>) =>
-    createDocument<SalesUser>('sales_users', data),
+    createUserDocument<SalesUser>('sales_users', data),
   update: (userId: string, data: Partial<SalesUser>) =>
-    updateDocument('sales_users', userId, data),
-  delete: (userId: string) => deleteDocument('sales_users', userId),
-  subscribe: (workspaceId: string, callback: (users: SalesUser[]) => void) =>
-    subscribeToCollection<SalesUser>(
-      'sales_users',
-      callback,
+    updateUserDocument('sales_users', userId, data),
+  delete: (userId: string) => deleteUserDocument('sales_users', userId),
+  subscribe: (workspaceId: string, callback: (users: SalesUser[]) => void) => {
+    const q = query(
+      collection(usersDb, 'sales_users'),
       where('workspaceId', '==', workspaceId),
       where('isActive', '==', true),
       orderBy('nombre', 'asc')
-    ),
+    );
+    return onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as SalesUser));
+      callback(data);
+    });
+  },
 };
 
 // Metricas Desempeño services
