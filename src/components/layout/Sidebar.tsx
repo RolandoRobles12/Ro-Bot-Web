@@ -10,17 +10,22 @@ import {
   Users,
   MessageSquare,
   CalendarClock,
+  Database,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuthStore } from '@/store/authStore';
 
 const navigation = [
+  // Principal
   { name: 'Panel', href: '/', icon: LayoutDashboard, roles: ['viewer', 'editor', 'admin'] },
+  // Mensajes
   { name: 'Plantillas', href: '/templates', icon: FileText, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Enviar Mensaje', href: '/send', icon: Send, roles: ['editor', 'admin'] },
   { name: 'Programador', href: '/scheduler', icon: CalendarClock, roles: ['editor', 'admin'] },
+  { name: 'Fuentes de Datos', href: '/data-sources', icon: Database, roles: ['editor', 'admin'] },
   { name: 'Programados', href: '/scheduled', icon: Calendar, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Historial', href: '/history', icon: History, roles: ['viewer', 'editor', 'admin'] },
+  // Admin
   { name: 'Reglas', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },
   { name: 'Equipos', href: '/teams', icon: Users, roles: ['admin'] },
   { name: 'Workspaces', href: '/workspaces', icon: MessageSquare, roles: ['admin'] },

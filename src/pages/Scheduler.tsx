@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -24,6 +25,9 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  FileBarChart2,
+  Zap,
+  CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -37,6 +41,7 @@ import {
   campaignService,
   campaignExecutionService,
   salesUserService,
+  dataSourceService,
 } from '@/services/firestore';
 import type {
   MessageCampaign,
@@ -50,6 +55,7 @@ import type {
   SalesUserType,
   CategoriaDesempeno,
   SalesUser,
+  DataSource,
 } from '@/types';
 
 // ==========================================================================
@@ -135,6 +141,72 @@ const WIZARD_STEPS = [
   { id: 'data', label: 'Datos', icon: Database },
   { id: 'message', label: 'Mensaje', icon: MessageSquare },
   { id: 'review', label: 'Revisar', icon: Eye },
+];
+
+// Presets que pre-configuran la campaña para casos de uso comunes
+const CAMPAIGN_PRESETS = [
+  {
+    id: 'reporte_semanal',
+    label: 'Reporte Semanal',
+    emoji: '📊',
+    description: 'Métricas de solicitudes y ventas vs meta, con categoría de desempeño',
+    color: 'border-blue-200 bg-blue-50 hover:border-blue-400',
+    activeColor: 'border-blue-500 bg-blue-100',
+    defaults: {
+      name: 'Reporte Semanal de Métricas',
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['kiosco', 'atn', 'ba', 'alianza'] as SalesUserType[] },
+      scheduleSlots: [{ id: 'preset-slot-1', daysOfWeek: [1], time: '09:00', timezone: 'America/Mexico_City', label: 'Lunes matutino' }],
+      dataConfig: { fetchSolicitudes: true, fetchVentasAvanzadas: false, fetchVentasReales: true, fetchVideollamadas: false, calculatePerformanceCategory: true, dateRange: 'current_week' as const },
+      messageVariants: [
+        { id: 'v1', label: 'Crítico/Alerta', conditionType: 'performance_category' as const, performanceCategories: ['critico', 'alerta'] as CategoriaDesempeno[], messageTemplate: '🚨 *{{nombre}}* — semana complicada. Solicitudes: {{solicitudes}}/{{meta_solicitudes}} ({{pct_solicitudes}}%). Ventas: ${{ventas}} de ${{meta_ventas}} meta ({{pct_ventas}}%). Quedan {{dias_restantes}} días, ¡podemos revertirlo!', priority: 1 },
+        { id: 'v2', label: 'En línea/Destacado', conditionType: 'performance_category' as const, performanceCategories: ['en_linea', 'destacado', 'excepcional'] as CategoriaDesempeno[], messageTemplate: '💪 *{{nombre}}* — ¡buen ritmo! Solicitudes: {{solicitudes}}/{{meta_solicitudes}} ({{pct_solicitudes}}%). Ventas: ${{ventas}} de ${{meta_ventas}} ({{pct_ventas}}%). Progreso esperado: {{progreso_esperado}}%. ¡Sigue así!', priority: 2 },
+        { id: 'v3', label: 'Default', conditionType: 'always' as const, messageTemplate: '📈 *{{nombre}}* — actualización de métricas. Solicitudes: {{solicitudes}}/{{meta_solicitudes}} ({{pct_solicitudes}}%). Ventas: ${{ventas}} de ${{meta_ventas}} ({{pct_ventas}}%). Categoría: {{categoria}}.', priority: 999 },
+      ],
+    },
+  },
+  {
+    id: 'tarjeta_tactica',
+    label: 'Tarjeta Táctica BA',
+    emoji: '🎯',
+    description: 'Seguimiento de actividad diaria para Embajadores con botones de feedback',
+    color: 'border-purple-200 bg-purple-50 hover:border-purple-400',
+    activeColor: 'border-purple-500 bg-purple-100',
+    defaults: {
+      name: 'Seguimiento Tarjeta Táctica',
+      campaignType: 'tarjeta_tactica' as const,
+      tarjetaNombre: 'La Puerta',
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['ba'] as SalesUserType[] },
+      scheduleSlots: [{ id: 'preset-slot-2', daysOfWeek: [1, 2, 3, 4, 5], time: '11:15', timezone: 'America/Mexico_City', label: 'Seguimiento La Puerta' }],
+      dataConfig: { fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false, fetchVideollamadas: true, calculatePerformanceCategory: false, dateRange: 'today' as const },
+    },
+  },
+  {
+    id: 'coaching',
+    label: 'Alerta de Coaching',
+    emoji: '🚨',
+    description: 'Mensaje enfocado a vendedores con bajo desempeño para activar coaching',
+    color: 'border-red-200 bg-red-50 hover:border-red-400',
+    activeColor: 'border-red-500 bg-red-100',
+    defaults: {
+      name: 'Alerta de Coaching — Bajo Desempeño',
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['kiosco', 'atn', 'alianza'] as SalesUserType[] },
+      scheduleSlots: [{ id: 'preset-slot-3', daysOfWeek: [3], time: '14:00', timezone: 'America/Mexico_City', label: 'Miércoles revisión' }],
+      dataConfig: { fetchSolicitudes: true, fetchVentasReales: true, fetchVentasAvanzadas: false, fetchVideollamadas: false, calculatePerformanceCategory: true, dateRange: 'current_week' as const },
+      messageVariants: [
+        { id: 'v1', label: 'Coaching requerido', conditionType: 'performance_category' as const, performanceCategories: ['critico', 'alerta', 'preocupante'] as CategoriaDesempeno[], messageTemplate: '🚨 *{{nombre}}*, estamos a {{dias_restantes}} días del cierre de semana y las métricas muestran que necesitas apoyo. Solicitudes: {{solicitudes}}/{{meta_solicitudes}}, Ventas: ${{ventas}} de ${{meta_ventas}}. Tu gerente te contactará hoy. ¿Puedes confirmar disponibilidad en los próximos 30 min?', priority: 1 },
+        { id: 'v2', label: 'Sin acción necesaria', conditionType: 'always' as const, messageTemplate: '✅ *{{nombre}}* — siguiendo el plan, sin alertas esta semana.', priority: 999 },
+      ],
+    },
+  },
+  {
+    id: 'personalizado',
+    label: 'Personalizado',
+    emoji: '✏️',
+    description: 'Construye tu campaña desde cero con control total',
+    color: 'border-gray-200 bg-gray-50 hover:border-gray-400',
+    activeColor: 'border-gray-400 bg-gray-100',
+    defaults: {},
+  },
 ];
 
 // ==========================================================================
@@ -289,48 +361,84 @@ function StepIndicator({
 function StepBasics({
   campaign,
   onChange,
+  selectedPresetId,
+  onSelectPreset,
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
+  selectedPresetId: string;
+  onSelectPreset: (presetId: string) => void;
 }) {
   return (
     <div className="space-y-6">
+      {/* Campaign type presets */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">Información de la Campaña</h3>
-        <p className="text-sm text-gray-500">Define el nombre y descripción de tu campaña de mensajes.</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">¿Qué tipo de campaña quieres crear?</h3>
+        <p className="text-sm text-gray-500 mb-4">Elige una plantilla para comenzar rápido, o empieza desde cero.</p>
+        <div className="grid grid-cols-2 gap-3">
+          {CAMPAIGN_PRESETS.map((preset) => {
+            const isSelected = selectedPresetId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => onSelectPreset(preset.id)}
+                className={`text-left p-4 rounded-xl border-2 transition-all ${
+                  isSelected ? preset.activeColor : preset.color
+                }`}
+              >
+                <div className="flex items-start justify-between mb-1">
+                  <span className="text-2xl">{preset.emoji}</span>
+                  {isSelected && <CheckCircle2 className="w-5 h-5 text-slack-purple" />}
+                </div>
+                <p className={`font-semibold text-sm ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                  {preset.label}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">{preset.description}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la campaña *</label>
-          <input
-            type="text"
-            value={campaign.name}
-            onChange={(e) => onChange({ name: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-            placeholder="Ej: Reporte diario de solicitudes"
-          />
+
+      <div className="border-t border-gray-100" />
+
+      {/* Campaign name & description */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">Información de la campaña</h4>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+            <input
+              type="text"
+              value={campaign.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+              placeholder="Ej: Reporte diario de solicitudes"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+            <textarea
+              value={campaign.description || ''}
+              onChange={(e) => onChange({ description: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+              placeholder="Describe el propósito de esta campaña..."
+            />
+          </div>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={campaign.mentionUser || false}
+              onChange={(e) => onChange({ mentionUser: e.target.checked })}
+              className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
+            />
+            <span className="text-sm text-gray-700">
+              Mencionar al usuario (@usuario) en el mensaje de Slack
+            </span>
+          </label>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-          <textarea
-            value={campaign.description || ''}
-            onChange={(e) => onChange({ description: e.target.value })}
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-            placeholder="Describe el propósito de esta campaña..."
-          />
-        </div>
-        <label className="flex items-center space-x-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={campaign.mentionUser || false}
-            onChange={(e) => onChange({ mentionUser: e.target.checked })}
-            className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
-          />
-          <span className="text-sm text-gray-700">
-            Mencionar al usuario (@usuario) en el mensaje de Slack
-          </span>
-        </label>
       </div>
     </div>
   );
@@ -725,14 +833,18 @@ function StepSchedule({
   );
 }
 
-// ---- Step 4: Data Source (NOW before Message) ----
+// ---- Step 4: Data Source ----
 
 function StepData({
   campaign,
   onChange,
+  dataSources,
+  onGoToDataSources,
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
+  dataSources: DataSource[];
+  onGoToDataSources: () => void;
 }) {
   const dataConfig = campaign.dataConfig || {
     fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false,
@@ -743,94 +855,237 @@ function StepData({
     onChange({ dataConfig: { ...dataConfig, ...updates } });
   };
 
-  const availableVars = getAvailableVariables({ ...dataConfig });
-  const hasAnyData = dataConfig.fetchSolicitudes || dataConfig.fetchVentasAvanzadas || dataConfig.fetchVentasReales || dataConfig.fetchVideollamadas;
+  const [showAdvanced, setShowAdvanced] = useState(!dataConfig.dataSourceId);
+
+  // When a DataSource is selected, derive the manual flags from it
+  const selectedDs = dataSources.find((ds) => ds.id === dataConfig.dataSourceId);
+
+  const handleSelectDs = (dsId: string) => {
+    if (!dsId) {
+      updateData({ dataSourceId: undefined });
+      return;
+    }
+    const ds = dataSources.find((d) => d.id === dsId);
+    if (!ds) return;
+    // Auto-configure manual flags based on the DataSource's variables
+    const keys = ds.variables.map((v) => v.key);
+    updateData({
+      dataSourceId: dsId,
+      fetchSolicitudes: keys.some((k) => k.includes('solicitud')),
+      fetchVentasAvanzadas: keys.some((k) => k.includes('avanzada')),
+      fetchVentasReales: keys.some((k) => k === 'ventas' || k.includes('ventas') && !k.includes('avanzada')),
+      fetchVideollamadas: keys.some((k) => k.includes('videollamada')),
+      calculatePerformanceCategory: keys.some((k) => k === 'categoria'),
+    });
+  };
+
+  // Variables available: from DataSource entity + always-available
+  const dsVariables: { name: string; description: string }[] = selectedDs
+    ? selectedDs.variables.map((v) => ({ name: v.key, description: v.label }))
+    : [];
+  const alwaysVars = TEMPLATE_VARIABLES.filter((v) => !v.requires);
+  const manualVars = getAvailableVariables(dataConfig).filter((v) => v.requires);
+  const allAvailableVars = selectedDs
+    ? [...alwaysVars, ...dsVariables]
+    : [...alwaysVars, ...manualVars];
+
+  const hasAnyData = dataConfig.fetchSolicitudes || dataConfig.fetchVentasAvanzadas
+    || dataConfig.fetchVentasReales || dataConfig.fetchVideollamadas;
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">
-          <Database className="w-5 h-5 inline mr-2" />Fuente de Datos
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Datos para los mensajes</h3>
         <p className="text-sm text-gray-500">
-          Selecciona qué métricas de HubSpot se obtienen para cada destinatario.
-          Los datos que actives aquí se convierten en variables disponibles en el paso de Mensaje.
+          Conecta una fuente de datos para que el mensaje incluya métricas reales de cada destinatario.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {([
-          { key: 'fetchSolicitudes' as const, label: 'Solicitudes creadas', desc: 'Deals creados en el período', vars: ['solicitudes', 'meta_solicitudes', 'pct_solicitudes'] },
-          { key: 'fetchVentasAvanzadas' as const, label: 'Ventas avanzadas', desc: 'Deals en etapas avanzadas', vars: ['ventas_avanzadas', 'pct_ventas_avanzadas'] },
-          { key: 'fetchVentasReales' as const, label: 'Ventas reales (desembolsos)', desc: 'Deals formalizados', vars: ['ventas', 'meta_ventas', 'pct_ventas'] },
-          { key: 'fetchVideollamadas' as const, label: 'Videollamadas (BAs)', desc: 'Videollamadas del día/semana', vars: ['videollamadas_dia', 'videollamadas_semana'] },
-          { key: 'calculatePerformanceCategory' as const, label: 'Categoría de desempeño', desc: 'Permite variantes condicionales por desempeño', vars: ['categoria'] },
-        ]).map((option) => (
-          <label
-            key={option.key}
-            className={`flex items-start space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-              dataConfig[option.key] ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={dataConfig[option.key]}
-              onChange={(e) => updateData({ [option.key]: e.target.checked })}
-              className="mt-0.5 rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-900">{option.label}</div>
-              <div className="text-xs text-gray-500">{option.desc}</div>
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {option.vars.map((v) => (
-                  <code key={v} className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded font-mono">{`{{${v}}}`}</code>
-                ))}
-              </div>
-            </div>
+      {/* ── Option A: DataSource entity picker ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-gray-700">
+            Fuente de datos configurada
           </label>
-        ))}
+          {dataSources.length === 0 && (
+            <button
+              type="button"
+              onClick={onGoToDataSources}
+              className="text-xs text-slack-purple hover:underline flex items-center space-x-1"
+            >
+              <Plus className="w-3 h-3" />
+              <span>Crear fuente</span>
+            </button>
+          )}
+        </div>
+
+        {dataSources.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2">
+            {/* "Sin datos" option */}
+            <label className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+              !dataConfig.dataSourceId ? 'border-gray-300 bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+            }`}>
+              <input
+                type="radio"
+                checked={!dataConfig.dataSourceId}
+                onChange={() => handleSelectDs('')}
+                className="text-slack-purple"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-700">Sin datos (mensaje simple)</p>
+                <p className="text-xs text-gray-500">Solo se usarán variables básicas: nombre, tipo y fecha</p>
+              </div>
+            </label>
+
+            {dataSources.map((ds) => {
+              const isSelected = dataConfig.dataSourceId === ds.id;
+              return (
+                <label
+                  key={ds.id}
+                  className={`flex items-start space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    isSelected ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    checked={isSelected}
+                    onChange={() => handleSelectDs(ds.id)}
+                    className="mt-0.5 text-slack-purple"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">{ds.icon || '📊'}</span>
+                      <p className="text-sm font-medium text-gray-800">{ds.name}</p>
+                      {isSelected && <CheckCircle2 className="w-4 h-4 text-slack-purple ml-auto" />}
+                    </div>
+                    {ds.description && <p className="text-xs text-gray-500 mt-0.5">{ds.description}</p>}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {ds.variables.slice(0, 5).map((v) => (
+                        <code key={v.key} className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded font-mono">{`{{${v.key}}}`}</code>
+                      ))}
+                      {ds.variables.length > 5 && (
+                        <span className="text-xs text-gray-400">+{ds.variables.length - 5}</span>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-4 border-2 border-dashed border-gray-200 rounded-lg text-center">
+            <FileBarChart2 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No tienes fuentes de datos configuradas.</p>
+            <button
+              type="button"
+              onClick={onGoToDataSources}
+              className="mt-2 text-sm text-slack-purple hover:underline"
+            >
+              Ir a Fuentes de Datos →
+            </button>
+          </div>
+        )}
       </div>
 
-      {hasAnyData && (
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Período de datos</label>
-            <select value={dataConfig.dateRange} onChange={(e) => updateData({ dateRange: e.target.value as CampaignDataConfig['dateRange'] })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm">
-              <option value="current_week">Semana actual</option>
-              <option value="last_week">Semana pasada</option>
-              <option value="current_month">Mes actual</option>
-              <option value="today">Solo hoy</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Pipeline personalizado</label>
-            <input
-              type="text"
-              value={dataConfig.customPipeline || ''}
-              onChange={(e) => updateData({ customPipeline: e.target.value || undefined })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-              placeholder="Dejar vacío para pipeline por defecto"
-            />
-          </div>
-        </div>
-      )}
+      {/* ── Option B: Manual config (advanced/collapsible) ── */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+        >
+          <span className="flex items-center space-x-2">
+            <Zap className="w-4 h-4 text-gray-500" />
+            <span>Configuración avanzada{dataConfig.dataSourceId ? ' (sobreescribe la fuente)' : ''}</span>
+          </span>
+          {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
 
-      {/* Preview of available variables */}
+        {showAdvanced && (
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {([
+                { key: 'fetchSolicitudes' as const, label: 'Solicitudes creadas', desc: 'Deals nuevos en el período', vars: ['solicitudes', 'meta_solicitudes', 'pct_solicitudes'], emoji: '📋' },
+                { key: 'fetchVentasAvanzadas' as const, label: 'Ventas avanzadas', desc: 'Deals en etapas avanzadas', vars: ['ventas_avanzadas', 'pct_ventas_avanzadas'], emoji: '⚡' },
+                { key: 'fetchVentasReales' as const, label: 'Ventas reales', desc: 'Deals formalizados/desembolsados', vars: ['ventas', 'meta_ventas', 'pct_ventas'], emoji: '💰' },
+                { key: 'fetchVideollamadas' as const, label: 'Videollamadas (BAs)', desc: 'Actividad del día y semana', vars: ['videollamadas_dia', 'videollamadas_semana'], emoji: '📞' },
+                { key: 'calculatePerformanceCategory' as const, label: 'Categoría desempeño', desc: 'Activa variantes condicionales', vars: ['categoria'], emoji: '🏆' },
+              ]).map((option) => (
+                <label
+                  key={option.key}
+                  className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    dataConfig[option.key] ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={dataConfig[option.key]}
+                    onChange={(e) => updateData({ [option.key]: e.target.checked })}
+                    className="mt-0.5 rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{option.emoji} {option.label}</div>
+                    <div className="text-xs text-gray-500">{option.desc}</div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {option.vars.map((v) => (
+                        <code key={v} className="px-1 py-0.5 text-xs bg-blue-100 text-blue-700 rounded font-mono">{`{{${v}}}`}</code>
+                      ))}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {hasAnyData && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Período</label>
+                  <select
+                    value={dataConfig.dateRange}
+                    onChange={(e) => updateData({ dateRange: e.target.value as CampaignDataConfig['dateRange'] })}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                  >
+                    <option value="current_week">Semana actual</option>
+                    <option value="last_week">Semana pasada</option>
+                    <option value="current_month">Mes actual</option>
+                    <option value="today">Solo hoy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Pipeline (ID HubSpot)</label>
+                  <input
+                    type="text"
+                    value={dataConfig.customPipeline || ''}
+                    onChange={(e) => updateData({ customPipeline: e.target.value || undefined })}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                    placeholder="Default del usuario"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Variables preview */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-blue-900 mb-2">
-          Variables disponibles para el siguiente paso ({availableVars.length})
+        <h4 className="text-sm font-medium text-blue-900 mb-2 flex items-center space-x-2">
+          <span>Variables disponibles en el mensaje</span>
+          <span className="bg-blue-200 text-blue-800 text-xs px-1.5 py-0.5 rounded-full font-semibold">
+            {allAvailableVars.length}
+          </span>
         </h4>
         <div className="flex flex-wrap gap-2">
-          {availableVars.map((v) => (
-            <span key={v.name} className="inline-flex items-center px-2 py-1 bg-white rounded text-xs border border-blue-200">
+          {allAvailableVars.map((v) => (
+            <span key={v.name} className="inline-flex items-center px-2 py-1 bg-white rounded text-xs border border-blue-200 gap-1.5">
               <code className="text-blue-700 font-mono">{`{{${v.name}}}`}</code>
-              <span className="text-gray-500 ml-1.5">{v.description}</span>
+              <span className="text-gray-500">{v.description}</span>
             </span>
           ))}
         </div>
-        {!hasAnyData && (
+        {allAvailableVars.length <= 4 && (
           <p className="text-xs text-blue-600 mt-2">
-            Activa fuentes de datos arriba para desbloquear más variables como solicitudes, ventas y categoría de desempeño.
+            Selecciona una fuente de datos o activa métricas para más variables.
           </p>
         )}
       </div>
@@ -1294,11 +1549,13 @@ function CampaignCard({
 // ==========================================================================
 
 export function Scheduler() {
+  const navigate = useNavigate();
   const { selectedWorkspace } = useAppStore();
   const { user } = useAuthStore();
 
   const [campaigns, setCampaigns] = useState<MessageCampaign[]>([]);
   const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Slack data
@@ -1312,6 +1569,7 @@ export function Scheduler() {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState(createDefaultCampaign());
   const [saving, setSaving] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState('personalizado');
 
   // History modal
   const [historyModalCampaign, setHistoryModalCampaign] = useState<MessageCampaign | null>(null);
@@ -1328,14 +1586,31 @@ export function Scheduler() {
     return () => unsubscribe();
   }, [selectedWorkspace]);
 
-  // Load sales users
+  // Load sales users + data sources
   useEffect(() => {
     if (!selectedWorkspace) return;
     salesUserService
       .getByWorkspace(selectedWorkspace.id)
       .then(setSalesUsers)
       .catch((err) => console.error('Error loading sales users:', err));
+    dataSourceService
+      .getByWorkspace(selectedWorkspace.id)
+      .then(setDataSources)
+      .catch((err) => console.error('Error loading data sources:', err));
   }, [selectedWorkspace]);
+
+  const handleSelectPreset = (presetId: string) => {
+    const preset = CAMPAIGN_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setSelectedPresetId(presetId);
+    if (Object.keys(preset.defaults).length > 0) {
+      setFormData((prev) => ({
+        ...prev,
+        ...preset.defaults,
+        workspaceId: selectedWorkspace?.id || '',
+      }));
+    }
+  };
 
   // Fetch Slack channels and users
   const fetchSlackData = useCallback(async () => {
@@ -1382,6 +1657,7 @@ export function Scheduler() {
     setEditingCampaign(null);
     setFormData({ ...createDefaultCampaign(), workspaceId: selectedWorkspace?.id || '' });
     setCurrentStep(0);
+    setSelectedPresetId('personalizado');
     setView('form');
   };
 
@@ -1512,10 +1788,24 @@ export function Scheduler() {
         <StepIndicator currentStep={currentStep} onStepClick={setCurrentStep} />
 
         <Card>
-          {currentStep === 0 && <StepBasics campaign={formData} onChange={updateFormData} />}
+          {currentStep === 0 && (
+            <StepBasics
+              campaign={formData}
+              onChange={updateFormData}
+              selectedPresetId={selectedPresetId}
+              onSelectPreset={handleSelectPreset}
+            />
+          )}
           {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} salesUsers={salesUsers} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
           {currentStep === 2 && <StepSchedule campaign={formData} onChange={updateFormData} />}
-          {currentStep === 3 && <StepData campaign={formData} onChange={updateFormData} />}
+          {currentStep === 3 && (
+            <StepData
+              campaign={formData}
+              onChange={updateFormData}
+              dataSources={dataSources}
+              onGoToDataSources={() => navigate('/data-sources')}
+            />
+          )}
           {currentStep === 4 && <StepMessage campaign={formData} onChange={updateFormData} />}
           {currentStep === 5 && <StepReview campaign={formData} salesUsers={salesUsers} />}
         </Card>

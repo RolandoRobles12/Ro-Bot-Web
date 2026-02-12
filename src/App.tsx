@@ -11,6 +11,7 @@ import { Rules } from './pages/Rules';
 import { Teams } from './pages/Teams';
 import { Scheduler } from './pages/Scheduler';
 import { Settings } from './pages/Settings';
+import { DataSources } from './pages/DataSources';
 
 function App() {
   // TEMPORARY: Disabled auth loading check for development
@@ -107,6 +108,17 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Settings />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/data-sources"
+            element={
+              <ProtectedRoute requiredRole="editor">
+                <Layout>
+                  <DataSources />
                 </Layout>
               </ProtectedRoute>
             }

@@ -583,8 +583,12 @@ export interface CampaignDataConfig {
   fetchVideollamadas: boolean;        // For BAs
   calculatePerformanceCategory: boolean;
   dateRange: 'current_week' | 'last_week' | 'current_month' | 'today';
-  customPipeline?: string;            // Override pipeline ID
-  customStages?: string[];            // Override advanced stage IDs
+  customPipeline?: string;            // Override pipeline ID (legacy)
+  customStages?: string[];            // Override advanced stage IDs (legacy)
+  // Fuente de datos configurada en /data-sources.
+  // Cuando se especifica, el motor de campañas usa el pipeline/stages/dateRange
+  // definidos en el DataSource entity en lugar de los valores de arriba.
+  dataSourceId?: string;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
   Database,
@@ -22,6 +23,7 @@ import {
   AlertCircle,
   Copy,
   ServerCog,
+  ChevronRight,
 } from 'lucide-react';
 import { hasExternalConfig, externalProjectId } from '@/config/firebase';
 import { toast } from 'sonner';
@@ -47,11 +49,10 @@ import type {
   DateRangeType,
 } from '@/types';
 
-type Tab = 'pipelines' | 'datasources' | 'integrations' | 'general' | 'notifications' | 'external_db';
+type Tab = 'pipelines' | 'integrations' | 'general' | 'notifications' | 'external_db';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'pipelines', label: 'Pipelines', icon: GitBranch, description: 'Configura tus pipelines de HubSpot' },
-  { id: 'datasources', label: 'Fuentes de Datos', icon: Database, description: 'Define de dónde obtener información' },
   { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI, Google Sheets y Slack' },
   { id: 'external_db', label: 'Firebase Externo', icon: ServerCog, description: 'Usuarios y metas desde otro proyecto Firebase' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
@@ -143,6 +144,7 @@ const createEmptyVariable = (): DataSourceVariable => ({
 });
 
 export function Settings() {
+  const navigate = useNavigate();
   const { selectedWorkspace } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>('pipelines');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
@@ -638,125 +640,25 @@ export function Settings() {
           </div>
         )}
 
-        {/* ==================== DATA SOURCES TAB ==================== */}
-        {activeTab === 'datasources' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Fuentes de Datos</h2>
-                <p className="text-sm text-gray-500">
-                  Configura de dónde se obtienen los datos para tus campañas
+        {/* ============== Fuentes de Datos — banner de acceso rápido ============== */}
+        {activeTab === 'pipelines' && (
+          <button
+            onClick={() => navigate('/data-sources')}
+            className="w-full flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 bg-blue-200 rounded-lg flex items-center justify-center">
+                <Database className="w-5 h-5 text-blue-700" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-blue-800">Fuentes de Datos</p>
+                <p className="text-xs text-blue-600">
+                  Gestiona las métricas y variables que alimentan tus campañas
                 </p>
               </div>
-              <Button onClick={() => openDataSourceModal()}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Fuente
-              </Button>
             </div>
-
-            {/* Info card */}
-            <Card className="p-4 bg-blue-50 border-blue-200">
-              <div className="flex items-start space-x-3">
-                <HelpCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-                <div>
-                  <h3 className="font-medium text-blue-800">¿Qué son las fuentes de datos?</h3>
-                  <p className="text-sm text-blue-700 mt-1">
-                    Las fuentes de datos definen de dónde se obtiene la información para tus campañas.
-                    Cada fuente exporta variables que puedes usar en tus mensajes como{' '}
-                    <code className="bg-blue-100 px-1 rounded">{'{{variable}}'}</code>.
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Empty state */}
-            {dataSources.length === 0 && (
-              <Card className="p-12 text-center">
-                <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Sin fuentes de datos
-                </h3>
-                <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                  Crea fuentes de datos para usar métricas de pipelines, propiedades de HubSpot,
-                  Google Sheets u otras fuentes en tus campañas.
-                </p>
-                <Button onClick={() => openDataSourceModal()}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Crear primera fuente
-                </Button>
-              </Card>
-            )}
-
-            {/* Data sources list */}
-            {dataSources.length > 0 && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {dataSources.map((ds) => {
-                  const typeInfo = DATA_SOURCE_TYPES.find((t) => t.value === ds.type);
-                  const linkedPipeline = pipelines.find((p) => p.id === ds.pipelineId);
-                  return (
-                    <Card
-                      key={ds.id}
-                      className="p-5 hover:shadow-lg transition-shadow cursor-pointer"
-                      onClick={() => openDataSourceModal(ds)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                            {typeInfo && <typeInfo.icon className="w-5 h-5 text-gray-600" />}
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{ds.name}</h3>
-                            <p className="text-xs text-gray-500">{typeInfo?.label}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteDataSource(ds.id);
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {ds.description && (
-                        <p className="text-sm text-gray-500 mt-2 line-clamp-2">{ds.description}</p>
-                      )}
-
-                      {/* Pipeline link */}
-                      {linkedPipeline && (
-                        <div className="mt-3 flex items-center space-x-2 text-xs text-gray-500">
-                          <GitBranch className="w-3 h-3" />
-                          <span>{linkedPipeline.name}</span>
-                        </div>
-                      )}
-
-                      {/* Variables */}
-                      <div className="mt-3 flex flex-wrap gap-1">
-                        {ds.variables.slice(0, 4).map((v) => (
-                          <span
-                            key={v.key}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 font-mono"
-                          >
-                            {`{{${v.key}}}`}
-                          </span>
-                        ))}
-                        {ds.variables.length > 4 && (
-                          <span className="text-xs text-gray-400">
-                            +{ds.variables.length - 4} más
-                          </span>
-                        )}
-                        {ds.variables.length === 0 && (
-                          <span className="text-xs text-gray-400">Sin variables definidas</span>
-                        )}
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            <ChevronRight className="w-5 h-5 text-blue-500" />
+          </button>
         )}
 
         {/* ==================== INTEGRATIONS TAB ==================== */}

@@ -1418,11 +1418,73 @@ async function resolveRecipients(
   return [];
 }
 
+/**
+ * Resuelve el dataConfig efectivo combinando:
+ * 1. Si dataConfig.dataSourceId existe → lee el DataSource y el Pipeline desde Firestore
+ *    y construye los flags automáticamente basado en stageCategories.
+ * 2. Si no, usa dataConfig directamente (comportamiento legacy).
+ */
+async function resolveDataConfig(dataConfig: any): Promise<any> {
+  if (!dataConfig?.dataSourceId) return dataConfig;
+
+  try {
+    const dsDoc = await db.collection('data_sources').doc(dataConfig.dataSourceId).get();
+    if (!dsDoc.exists) return dataConfig;
+
+    const ds = dsDoc.data()!;
+
+    // Derive flags from DataSource variables (by key name)
+    const varKeys: string[] = (ds.variables || []).map((v: any) => v.key as string);
+    const resolved = {
+      ...dataConfig,
+      fetchSolicitudes: varKeys.some((k) => k.includes('solicitud')),
+      fetchVentasAvanzadas: varKeys.some((k) => k.includes('avanzada')),
+      fetchVentasReales: varKeys.some((k) => k === 'ventas' || (k.includes('ventas') && !k.includes('avanzada'))),
+      fetchVideollamadas: varKeys.some((k) => k.includes('videollamada')),
+      calculatePerformanceCategory: varKeys.some((k) => k === 'categoria'),
+      // Date range from DataSource (map from DataSource format to campaign format)
+      dateRange: (() => {
+        const dr: string = ds.dateRange || 'this_week';
+        const map: Record<string, string> = {
+          today: 'today', this_week: 'current_week', last_week: 'last_week', this_month: 'current_month',
+        };
+        return map[dr] || 'current_week';
+      })(),
+    };
+
+    // If the DataSource links to a configured Pipeline, get the hubspotPipelineId
+    // and the advanced stage IDs from the stages with category 'advanced' or 'won'
+    if (ds.pipelineId) {
+      const plDoc = await db.collection('pipelines').doc(ds.pipelineId).get();
+      if (plDoc.exists) {
+        const pl = plDoc.data()!;
+        resolved.customPipeline = pl.hubspotPipelineId;
+
+        const stageCategories: string[] = ds.stageCategories || [];
+        // Advanced stages = pipeline stages whose category is in stageCategories
+        const advancedStageIds = (pl.stages || [])
+          .filter((s: any) => stageCategories.includes(s.category) && s.category !== 'new' && s.category !== 'lost')
+          .map((s: any) => s.id);
+
+        if (advancedStageIds.length > 0) {
+          resolved.customStages = advancedStageIds;
+        }
+      }
+    }
+
+    return resolved;
+  } catch (err) {
+    console.error('Error resolving dataSourceId:', err);
+    return dataConfig;
+  }
+}
+
 async function fetchRecipientMetrics(
   recipient: any,
-  dataConfig: any,
+  rawDataConfig: any,
   accessToken: string | null
 ): Promise<Record<string, number>> {
+  const dataConfig = await resolveDataConfig(rawDataConfig);
   if (!dataConfig || !accessToken || !recipient.hubspotOwnerId) {
     return {};
   }
