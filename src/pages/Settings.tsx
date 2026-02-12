@@ -15,7 +15,6 @@ import {
   Sparkles,
   FileSpreadsheet,
   Globe,
-  HelpCircle,
   Plug,
   Eye,
   EyeOff,
@@ -149,7 +148,6 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<Tab>('pipelines');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [_settings, setSettings] = useState<WorkspaceSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -187,7 +185,6 @@ export function Settings() {
   useEffect(() => {
     if (selectedWorkspace?.id) {
       loadPipelines();
-      loadDataSources();
       loadSettings();
     }
   }, [selectedWorkspace?.id]);
@@ -212,16 +209,6 @@ export function Settings() {
       console.error(error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadDataSources = async () => {
-    if (!selectedWorkspace?.id) return;
-    try {
-      const data = await dataSourceService.getByWorkspace(selectedWorkspace.id);
-      setDataSources(data);
-    } catch (error) {
-      console.error('Error loading data sources:', error);
     }
   };
 
@@ -346,35 +333,6 @@ export function Settings() {
 
   // ==================== DATA SOURCE HANDLERS ====================
 
-  const openDataSourceModal = (ds?: DataSource) => {
-    if (ds) {
-      setEditingDataSource(ds);
-      setDataSourceForm({
-        workspaceId: ds.workspaceId,
-        name: ds.name,
-        description: ds.description,
-        type: ds.type,
-        icon: ds.icon || '📊',
-        pipelineId: ds.pipelineId,
-        stageCategories: ds.stageCategories,
-        hubspotProperties: ds.hubspotProperties,
-        sheetId: ds.sheetId,
-        sheetRange: ds.sheetRange,
-        apiEndpoint: ds.apiEndpoint,
-        apiHeaders: ds.apiHeaders,
-        dateRange: ds.dateRange,
-        variables: ds.variables,
-        isActive: ds.isActive,
-        createdAt: ds.createdAt,
-        updatedAt: Timestamp.now(),
-      });
-    } else {
-      setEditingDataSource(null);
-      setDataSourceForm(createEmptyDataSource(selectedWorkspace?.id || ''));
-    }
-    setIsDataSourceModalOpen(true);
-  };
-
   const closeDataSourceModal = () => {
     setIsDataSourceModalOpen(false);
     setEditingDataSource(null);
@@ -403,24 +361,11 @@ export function Settings() {
         toast.success('Fuente de datos creada');
       }
       closeDataSourceModal();
-      loadDataSources();
     } catch (error) {
       toast.error('Error al guardar');
       console.error(error);
     } finally {
       setSavingDataSource(false);
-    }
-  };
-
-  const deleteDataSource = async (dsId: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta fuente de datos?')) return;
-    try {
-      await dataSourceService.delete(dsId);
-      toast.success('Fuente de datos eliminada');
-      loadDataSources();
-    } catch (error) {
-      toast.error('Error al eliminar');
-      console.error(error);
     }
   };
 
