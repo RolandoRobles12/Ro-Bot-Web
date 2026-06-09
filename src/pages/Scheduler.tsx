@@ -42,6 +42,7 @@ import {
   campaignExecutionService,
   salesUserService,
   dataSourceService,
+  positionService,
 } from '@/services/firestore';
 import type {
   MessageCampaign,
@@ -56,6 +57,7 @@ import type {
   CategoriaDesempeno,
   SalesUser,
   DataSource,
+  Position,
 } from '@/types';
 
 // ==========================================================================
@@ -72,12 +74,6 @@ const DAYS_OF_WEEK = [
   { value: 6, label: 'Sáb', fullLabel: 'Sábado' },
 ];
 
-const SALES_USER_TYPES: { value: SalesUserType; label: string; emoji: string }[] = [
-  { value: 'kiosco', label: 'Kioscos', emoji: '🏪' },
-  { value: 'atn', label: 'Aviva Tu Negocio', emoji: '💼' },
-  { value: 'ba', label: 'Embajadores BA', emoji: '🎯' },
-  { value: 'alianza', label: 'Alianzas', emoji: '🤝' },
-];
 
 const PERFORMANCE_CATEGORIES: { value: CategoriaDesempeno; label: string; emoji: string; color: string }[] = [
   { value: 'critico', label: 'Crítico', emoji: '🚨', color: 'bg-red-100 text-red-800' },
@@ -154,7 +150,7 @@ const CAMPAIGN_PRESETS = [
     activeColor: 'border-blue-500 bg-blue-100',
     defaults: {
       name: 'Reporte Semanal de Métricas',
-      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['kiosco', 'atn', 'ba', 'alianza'] as SalesUserType[] },
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: [] as SalesUserType[] },
       scheduleSlots: [{ id: 'preset-slot-1', daysOfWeek: [1], time: '09:00', timezone: 'America/Mexico_City', label: 'Lunes matutino' }],
       dataConfig: { fetchSolicitudes: true, fetchVentasAvanzadas: false, fetchVentasReales: true, fetchVideollamadas: false, calculatePerformanceCategory: true, dateRange: 'current_week' as const },
       messageVariants: [
@@ -175,7 +171,7 @@ const CAMPAIGN_PRESETS = [
       name: 'Seguimiento Tarjeta Táctica',
       campaignType: 'tarjeta_tactica' as const,
       tarjetaNombre: 'La Puerta',
-      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['ba'] as SalesUserType[] },
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: [] as SalesUserType[] },
       scheduleSlots: [{ id: 'preset-slot-2', daysOfWeek: [1, 2, 3, 4, 5], time: '11:15', timezone: 'America/Mexico_City', label: 'Seguimiento La Puerta' }],
       dataConfig: { fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false, fetchVideollamadas: true, calculatePerformanceCategory: false, dateRange: 'today' as const },
     },
@@ -189,7 +185,7 @@ const CAMPAIGN_PRESETS = [
     activeColor: 'border-red-500 bg-red-100',
     defaults: {
       name: 'Alerta de Coaching — Bajo Desempeño',
-      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['kiosco', 'atn', 'alianza'] as SalesUserType[] },
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: [] as SalesUserType[] },
       scheduleSlots: [{ id: 'preset-slot-3', daysOfWeek: [3], time: '14:00', timezone: 'America/Mexico_City', label: 'Miércoles revisión' }],
       dataConfig: { fetchSolicitudes: true, fetchVentasReales: true, fetchVentasAvanzadas: false, fetchVideollamadas: false, calculatePerformanceCategory: true, dateRange: 'current_week' as const },
       messageVariants: [
@@ -248,9 +244,7 @@ function formatScheduleSummary(slots: CampaignScheduleSlot[]): string {
 
 function formatRecipientSummary(config: CampaignRecipientConfig): string {
   if (config.sourceType === 'sales_user_type' && config.salesUserTypes?.length) {
-    return config.salesUserTypes
-      .map((t) => SALES_USER_TYPES.find((st) => st.value === t)?.label || t)
-      .join(', ');
+    return config.salesUserTypes.join(', ');
   }
   if (config.sourceType === 'specific_users' && config.specificUserIds?.length) {
     return `${config.specificUserIds.length} usuario(s)`;
@@ -450,6 +444,7 @@ function StepRecipients({
   campaign,
   onChange,
   salesUsers,
+  positions,
   slackChannels,
   slackUsers: _slackUsers,
   loadingSlack,
@@ -458,6 +453,7 @@ function StepRecipients({
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
   salesUsers: SalesUser[];
+  positions: Position[];
   slackChannels: SlackChannel[];
   slackUsers: SlackUser[];
   loadingSlack: boolean;
@@ -503,8 +499,8 @@ function StepRecipients({
   };
 
   const userCounts: Record<string, number> = {};
-  for (const type of SALES_USER_TYPES) {
-    userCounts[type.value] = salesUsers.filter((u) => u.tipo === type.value).length;
+  for (const pos of positions) {
+    userCounts[pos.name] = salesUsers.filter((u) => u.tipo === pos.name).length;
   }
 
   const filteredChannels = slackChannels.filter(
@@ -549,30 +545,36 @@ function StepRecipients({
       {config.sourceType === 'sales_user_type' && (
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">Tipos de vendedor</label>
-          <div className="grid grid-cols-2 gap-3">
-            {SALES_USER_TYPES.map((type) => {
-              const isSelected = config.salesUserTypes?.includes(type.value) || false;
-              return (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => toggleSalesUserType(type.value)}
-                  className={`flex items-center space-x-3 p-3 rounded-lg border-2 transition-all ${
-                    isSelected ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="text-xl">{type.emoji}</span>
-                  <div className="text-left">
-                    <div className="font-medium text-sm text-gray-900">{type.label}</div>
-                    <div className="text-xs text-gray-500">{userCounts[type.value] || 0} vendedor(es)</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {positions.length === 0 ? (
+            <div className="bg-yellow-50 rounded-lg p-4 text-sm text-yellow-800">
+              No hay posiciones configuradas en el catálogo.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {positions.map((pos) => {
+                const isSelected = config.salesUserTypes?.includes(pos.name) || false;
+                return (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => toggleSalesUserType(pos.name)}
+                    className={`flex items-center space-x-3 p-3 rounded-lg border-2 transition-all ${
+                      isSelected ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">👤</span>
+                    <div className="text-left">
+                      <div className="font-medium text-sm text-gray-900">{pos.name}</div>
+                      <div className="text-xs text-gray-500">{userCounts[pos.name] || 0} vendedor(es)</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {config.salesUserTypes && config.salesUserTypes.length > 0 && (
             <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-800">
-              Se enviará a <strong>{config.salesUserTypes.reduce((sum, t) => sum + (userCounts[t] || 0), 0)} vendedor(es)</strong> de tipo: {config.salesUserTypes.map((t) => SALES_USER_TYPES.find((st) => st.value === t)?.label).join(', ')}
+              Se enviará a <strong>{config.salesUserTypes.reduce((sum, t) => sum + (userCounts[t] || 0), 0)} vendedor(es)</strong> de tipo: {config.salesUserTypes.join(', ')}
             </div>
           )}
         </div>
@@ -590,7 +592,6 @@ function StepRecipients({
             <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y">
               {salesUsers.map((u) => {
                 const isSelected = config.specificUserIds?.includes(u.id) || false;
-                const typeInfo = SALES_USER_TYPES.find((t) => t.value === u.tipo);
                 return (
                   <button
                     key={u.id}
@@ -599,10 +600,10 @@ function StepRecipients({
                     className={`w-full flex items-center space-x-3 p-3 text-left transition-colors ${isSelected ? 'bg-slack-purple/5' : 'hover:bg-gray-50'}`}
                   >
                     <input type="checkbox" checked={isSelected} readOnly className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple" />
-                    <span className="text-sm">{typeInfo?.emoji}</span>
+                    <span className="text-sm">👤</span>
                     <div>
                       <div className="font-medium text-sm text-gray-900">{u.nombre}</div>
-                      <div className="text-xs text-gray-500">{typeInfo?.label}</div>
+                      <div className="text-xs text-gray-500">{u.tipo}</div>
                     </div>
                   </button>
                 );
@@ -1555,6 +1556,7 @@ export function Scheduler() {
 
   const [campaigns, setCampaigns] = useState<MessageCampaign[]>([]);
   const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -1585,6 +1587,13 @@ export function Scheduler() {
     });
     return () => unsubscribe();
   }, [selectedWorkspace]);
+
+  // Load positions catalog once on mount
+  useEffect(() => {
+    positionService.getAll()
+      .then(setPositions)
+      .catch((err) => console.error('Error loading positions:', err));
+  }, []);
 
   // Load sales users + data sources
   useEffect(() => {
@@ -1796,7 +1805,7 @@ export function Scheduler() {
               onSelectPreset={handleSelectPreset}
             />
           )}
-          {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} salesUsers={salesUsers} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
+          {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} salesUsers={salesUsers} positions={positions} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
           {currentStep === 2 && <StepSchedule campaign={formData} onChange={updateFormData} />}
           {currentStep === 3 && (
             <StepData

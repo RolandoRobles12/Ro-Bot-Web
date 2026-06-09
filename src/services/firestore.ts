@@ -26,6 +26,7 @@ import {
   HubSpotConnection,
   MessageRule,
   SalesUser,
+  Position,
   MetricaDesempeno,
   TarjetaTactica,
   SeguimientoTarjeta,
@@ -360,6 +361,17 @@ export const ruleService = {
 // ==========================================================================
 // =                     SALES COACHING SYSTEM SERVICES                     =
 // ==========================================================================
+
+// Position catalog service
+// Lee posiciones del catálogo del proyecto Firebase externo.
+export const positionService = {
+  getAll: async (): Promise<Position[]> => {
+    const snap = await getDocs(collection(usersDb, 'catalog', 'positions', 'items'));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Position))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+};
 
 // Sales User services
 // Lee/escribe en usersDb (proyecto Firebase externo si está configurado)

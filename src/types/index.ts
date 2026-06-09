@@ -403,7 +403,15 @@ export interface CampaignDataSourceConfig {
 // =                     SALES COACHING SYSTEM TYPES                        =
 // ==========================================================================
 
-export type SalesUserType = 'kiosco' | 'atn' | 'ba' | 'alianza';
+export type SalesUserType = string;
+
+export interface Position {
+  id: string;
+  name: string;
+  area: string;
+  level: string;
+  productId: string;
+}
 
 export type CategoriaDesempeno =
   | 'critico'      // 0 - Desempeño crítico, requiere intervención inmediata
