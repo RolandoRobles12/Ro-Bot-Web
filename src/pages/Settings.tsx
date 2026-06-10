@@ -345,34 +345,6 @@ export function Settings() {
 
   // ==================== DATA SOURCE HANDLERS ====================
 
-  const _openDataSourceModal = (ds?: DataSource) => {
-    if (ds) {
-      setEditingDataSource(ds);
-      setDataSourceForm({
-        workspaceId: ds.workspaceId,
-        name: ds.name,
-        description: ds.description,
-        type: ds.type,
-        icon: ds.icon || '📊',
-        pipelineId: ds.pipelineId,
-        stageCategories: ds.stageCategories,
-        hubspotProperties: ds.hubspotProperties,
-        sheetId: ds.sheetId,
-        sheetRange: ds.sheetRange,
-        apiEndpoint: ds.apiEndpoint,
-        apiHeaders: ds.apiHeaders,
-        dateRange: ds.dateRange,
-        variables: ds.variables,
-        isActive: ds.isActive,
-        createdAt: ds.createdAt,
-        updatedAt: Timestamp.now(),
-      });
-    } else {
-      setEditingDataSource(null);
-      setDataSourceForm(createEmptyDataSource(selectedWorkspace?.id || ''));
-    }
-    setIsDataSourceModalOpen(true);
-  };
 
   const closeDataSourceModal = () => {
     setIsDataSourceModalOpen(false);
@@ -411,17 +383,6 @@ export function Settings() {
     }
   };
 
-  const _deleteDataSource = async (dsId: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta fuente de datos?')) return;
-    try {
-      await dataSourceService.delete(dsId);
-      toast.success('Fuente de datos eliminada');
-      loadDataSources();
-    } catch (error) {
-      toast.error('Error al eliminar');
-      console.error(error);
-    }
-  };
 
   const addVariable = () => {
     setDataSourceForm((prev) => ({
