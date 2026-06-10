@@ -76,6 +76,15 @@ export function FileUpload({ workspaceId, value, onChange, disabled }: FileUploa
     };
   }, []);
 
+  // Assign stream to video element after it renders
+  useEffect(() => {
+    if (recordingState === 'recording' && recordingType === 'video' && liveVideoRef.current && streamRef.current) {
+      liveVideoRef.current.srcObject = streamRef.current;
+      liveVideoRef.current.muted = true;
+      liveVideoRef.current.play().catch(() => {});
+    }
+  }, [recordingState, recordingType]);
+
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -95,13 +104,6 @@ export function FileUpload({ workspaceId, value, onChange, disabled }: FileUploa
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
-
-      // Show live preview for video
-      if (type === 'video' && liveVideoRef.current) {
-        liveVideoRef.current.srcObject = stream;
-        liveVideoRef.current.muted = true;
-        liveVideoRef.current.play().catch(() => {});
-      }
 
       const mimeType = getBestMimeType(type);
       const recorder = new MediaRecorder(stream, { mimeType });
