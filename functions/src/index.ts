@@ -1539,15 +1539,17 @@ async function resolveRecipients(
 
   if (sourceType === 'specific_users') {
     const userIds: string[] = recipientConfig.specificUserIds || [];
-    const users: any[] = [];
+    if (userIds.length === 0) return [];
+
+    // Fetch all external users once and filter by selected IDs
+    // (same strategy as sales_user_type — avoids per-user REST lookups that may fail without auth)
+    const allExternal = await queryExternalUsers();
+    const users: any[] = allExternal.filter((u: any) => userIds.includes(u.id));
+
+    // For IDs not found externally, fall back to local sales_users collection
+    const foundIds = new Set(users.map((u: any) => u.id));
     for (const userId of userIds) {
-      // Intentar con usuarios externos primero
-      const externalUser = await getExternalUserDoc(userId);
-      if (externalUser) {
-        users.push(externalUser);
-        continue;
-      }
-      // Fallback: sales_users legacy
+      if (foundIds.has(userId)) continue;
       const userDoc = await getSalesUserDoc(userId);
       if (userDoc.exists) {
         users.push({ id: userDoc.id, ...userDoc.data() });
