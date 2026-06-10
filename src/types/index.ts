@@ -580,6 +580,7 @@ export interface MessageVariant {
   // Message content
   messageTemplate: string;            // Template with {{variables}}
   priority: number;                   // Lower = higher priority
+  scheduleSlotId?: string;            // Si está definido, solo aplica a ese horario
 }
 
 /**
