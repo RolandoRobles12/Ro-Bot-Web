@@ -13,7 +13,6 @@ import {
   Layers,
   GripVertical,
   Sparkles,
-  FileSpreadsheet,
   Globe,
   Plug,
   Eye,
@@ -21,10 +20,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Copy,
-  ServerCog,
   ChevronRight,
 } from 'lucide-react';
-import { hasExternalConfig, externalProjectId } from '@/config/firebase';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
@@ -48,12 +45,11 @@ import type {
   DateRangeType,
 } from '@/types';
 
-type Tab = 'pipelines' | 'integrations' | 'general' | 'notifications' | 'external_db';
+type Tab = 'pipelines' | 'integrations' | 'general' | 'notifications';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'pipelines', label: 'Pipelines', icon: GitBranch, description: 'Configura tus pipelines de HubSpot' },
-  { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI, Google Sheets y Slack' },
-  { id: 'external_db', label: 'Firebase Externo', icon: ServerCog, description: 'Usuarios y metas desde otro proyecto Firebase' },
+  { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI y Slack' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, description: 'Alertas y avisos' },
 ];
@@ -69,7 +65,6 @@ const STAGE_CATEGORIES: { value: StageCategory; label: string; color: string; de
 const DATA_SOURCE_TYPES: { value: DataSourceType; label: string; icon: React.ElementType; description: string }[] = [
   { value: 'pipeline', label: 'Pipeline de HubSpot', icon: GitBranch, description: 'Métricas de un pipeline específico' },
   { value: 'property', label: 'Propiedades HubSpot', icon: Layers, description: 'Propiedades específicas de contactos o negocios' },
-  { value: 'google_sheets', label: 'Google Sheets', icon: FileSpreadsheet, description: 'Datos de una hoja de cálculo' },
   { value: 'api', label: 'API Externa', icon: Globe, description: 'Datos de un endpoint externo' },
 ];
 
@@ -172,11 +167,9 @@ export function Settings() {
     notifyOnCampaignFailure: true,
     notificationChannel: '',
     openaiApiKey: '',
-    googleSheetsApiKey: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
-  const [showSheetsKey, setShowSheetsKey] = useState(false);
   const [savingIntegrations, setSavingIntegrations] = useState(false);
 
   useEffect(() => {
@@ -237,7 +230,6 @@ export function Settings() {
           notifyOnCampaignFailure: data.notifyOnCampaignFailure ?? true,
           notificationChannel: data.notificationChannel || '',
           openaiApiKey: data.openaiApiKey || '',
-          googleSheetsApiKey: data.googleSheetsApiKey || '',
         });
       }
     } catch (error) {
@@ -439,7 +431,6 @@ export function Settings() {
       await workspaceSettingsService.upsert(selectedWorkspace.id, {
         workspaceId: selectedWorkspace.id,
         openaiApiKey: settingsForm.openaiApiKey || '',
-        googleSheetsApiKey: settingsForm.googleSheetsApiKey || '',
         updatedAt: Timestamp.now(),
       });
       toast.success('Integraciones guardadas');
@@ -678,64 +669,6 @@ export function Settings() {
                 </div>
                 <p className="mt-1.5 text-xs text-gray-500">
                   Modelo utilizado: <code className="bg-gray-100 px-1 py-0.5 rounded">gpt-4o-mini</code>. La clave se almacena de forma segura en Firestore.
-                </p>
-              </div>
-            </Card>
-
-            {/* Google Sheets */}
-            <Card className="p-6">
-              <div className="flex items-start space-x-4 mb-6">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Google Sheets</h2>
-                  <p className="text-sm text-gray-500">
-                    Lee datos de hojas de calculo para usarlos como fuente de datos en campanas.
-                  </p>
-                </div>
-                <div className="ml-auto flex-shrink-0">
-                  {settingsForm.googleSheetsApiKey ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      Configurado
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      No configurado
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="max-w-xl">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  API Key de Google Sheets
-                </label>
-                <div className="relative">
-                  <input
-                    type={showSheetsKey ? 'text' : 'password'}
-                    value={settingsForm.googleSheetsApiKey}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({ ...prev, googleSheetsApiKey: e.target.value }))
-                    }
-                    placeholder="AIza..."
-                    className="w-full px-3 py-2 pr-20 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 space-x-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowSheetsKey(!showSheetsKey)}
-                      className="p-1 text-gray-400 hover:text-gray-600"
-                      title={showSheetsKey ? 'Ocultar' : 'Mostrar'}
-                    >
-                      {showSheetsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-                <p className="mt-1.5 text-xs text-gray-500">
-                  Clave API de Google Cloud con permisos de Google Sheets API habilitados.
                 </p>
               </div>
             </Card>
@@ -1433,165 +1366,6 @@ export function Settings() {
         </div>
       )}
 
-      {/* ==================== EXTERNAL DB TAB (inline, no modal) ==================== */}
-      {activeTab === 'external_db' && (
-        <div className="space-y-6">
-          {/* Estado de conexión */}
-          <Card className="p-6">
-            <div className="flex items-start space-x-4 mb-6">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${hasExternalConfig ? 'bg-green-100' : 'bg-gray-100'}`}>
-                <ServerCog className={`w-5 h-5 ${hasExternalConfig ? 'text-green-600' : 'text-gray-400'}`} />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-lg font-semibold text-gray-900">Firebase Externo — Usuarios y Metas</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Los <strong>SalesUsers</strong> (kioscos, ATN, BAs, alianzas) y sus metas semanales se leen
-                  desde otro proyecto Firebase en lugar del proyecto principal de Ro-Bot.
-                  Esto permite que los datos de usuarios ya existentes en tu sistema sean la fuente de verdad.
-                </p>
-              </div>
-              <div className="ml-auto flex-shrink-0">
-                {hasExternalConfig ? (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    Conectado
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    No configurado
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {hasExternalConfig ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center space-x-2 mb-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-800">Proyecto externo activo</span>
-                </div>
-                <p className="text-sm text-green-700">
-                  Conectado al proyecto: <code className="bg-green-100 px-1.5 py-0.5 rounded font-mono text-xs">{externalProjectId}</code>
-                </p>
-                <p className="text-xs text-green-600 mt-1">
-                  La colección <code className="bg-green-100 px-1 py-0.5 rounded">sales_users</code> se lee desde este proyecto.
-                </p>
-              </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-center space-x-2 mb-2">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-800">Variables de entorno no detectadas</span>
-                </div>
-                <p className="text-sm text-amber-700">
-                  Los usuarios se están leyendo desde el proyecto principal de Ro-Bot.
-                  Para usar un proyecto externo, agrega las variables de entorno a tu archivo <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">.env.local</code>.
-                </p>
-              </div>
-            )}
-          </Card>
-
-          {/* Instrucciones de configuración */}
-          <Card className="p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Database className="w-4 h-4 text-slack-purple" />
-              <span>Configuración — Frontend (.env.local)</span>
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Agrega estas variables a tu archivo <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-xs">.env.local</code> (en la raíz del proyecto):
-            </p>
-            <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs text-gray-100 space-y-1 overflow-x-auto">
-              <p className="text-gray-400"># Firebase Externo - Usuarios y Metas</p>
-              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_API_KEY</span>=<span className="text-green-400">tu_api_key</span></p>
-              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_AUTH_DOMAIN</span>=<span className="text-green-400">tu_proyecto.firebaseapp.com</span></p>
-              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_PROJECT_ID</span>=<span className="text-green-400">tu_project_id</span></p>
-              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_STORAGE_BUCKET</span>=<span className="text-green-400">tu_proyecto.appspot.com</span></p>
-              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_MESSAGING_SENDER_ID</span>=<span className="text-green-400">tu_sender_id</span></p>
-              <p><span className="text-blue-400">VITE_EXTERNAL_FIREBASE_APP_ID</span>=<span className="text-green-400">tu_app_id</span></p>
-            </div>
-            <p className="text-xs text-gray-500 mt-3">
-              Después de agregar las variables, reinicia el servidor de desarrollo (<code className="bg-gray-100 px-1 py-0.5 rounded">npm run dev</code>) para que los cambios tomen efecto.
-            </p>
-          </Card>
-
-          {/* Instrucciones Cloud Functions */}
-          <Card className="p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Globe className="w-4 h-4 text-slack-purple" />
-              <span>Configuración — Cloud Functions (lectura server-side)</span>
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Para que las campañas y notificaciones programadas también lean los usuarios desde el proyecto externo,
-              configura el <strong>ID del proyecto</strong> y la <strong>cuenta de servicio</strong> en las Cloud Functions:
-            </p>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-medium text-gray-700 mb-1">Opción A — Variables de entorno de funciones:</p>
-                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-100 overflow-x-auto">
-                  <p className="text-gray-400"># En tu terminal, desde la carpeta /functions:</p>
-                  <p>firebase functions:config:set \</p>
-                  <p className="pl-4">external.project_id=<span className="text-green-400">"tu_project_id"</span> \</p>
-                  <p className="pl-4">external.service_account=<span className="text-green-400">'{"{"}"type":"service_account",...{"}"}'</span></p>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-700 mb-1">Opción B — Secret Manager (recomendado para producción):</p>
-                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-100 overflow-x-auto">
-                  <p><span className="text-yellow-400">firebase secrets:set</span> EXTERNAL_FIREBASE_SERVICE_ACCOUNT</p>
-                  <p className="text-gray-400 mt-1"># Pega el JSON de la cuenta de servicio cuando se solicite</p>
-                  <p className="mt-1"><span className="text-yellow-400">firebase secrets:set</span> EXTERNAL_FIREBASE_PROJECT_ID</p>
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-700">
-                  <strong>¿Cómo obtener el JSON de la cuenta de servicio?</strong><br />
-                  Firebase Console → Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada.
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Estructura esperada en Firestore externo */}
-          <Card className="p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-              <Layers className="w-4 h-4 text-slack-purple" />
-              <span>Estructura esperada en Firestore externo</span>
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              La colección <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-xs">sales_users</code> debe tener documentos con estos campos:
-            </p>
-            <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs text-gray-800 overflow-x-auto">
-              <pre>{`{
-  "workspaceId": "id_del_workspace_en_robot",
-  "nombre": "Nombre del usuario",
-  "tipo": "kiosco" | "atn" | "ba" | "alianza",
-  "hubspotOwnerId": "123456",
-  "slackUserId": "U08CVH2056U",
-  "slackChannel": "C09PH8BMVUJ",
-  "metaSolicitudes": 20,
-  "metaVentas": 150000,
-  "pipeline": "default" | "76732496",
-
-  // Opcional: stages avanzados configurables
-  "pipelineAdvancedStages": ["69785436", "33642516"],
-
-  // Opcional: propiedad de desembolso
-  "realSalesProperty": "hs_v2_date_entered_33823866",
-
-  // Para kioscos: promotores
-  "promotores": ["hubspot_id_promotor1", "hubspot_id_promotor2"],
-
-  "isActive": true
-}`}</pre>
-            </div>
-            <p className="text-xs text-gray-500 mt-3">
-              Los campos <code className="bg-gray-100 px-1 py-0.5 rounded">pipelineAdvancedStages</code> y <code className="bg-gray-100 px-1 py-0.5 rounded">realSalesProperty</code> son opcionales.
-              Si no se especifican, se usan los valores por defecto según el tipo de pipeline.
-            </p>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

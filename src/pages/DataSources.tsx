@@ -7,7 +7,6 @@ import {
   Edit2,
   GitBranch,
   Layers,
-  FileSpreadsheet,
   Globe,
   Sparkles,
   CheckCircle2,
@@ -37,7 +36,6 @@ import type {
 const DATA_SOURCE_TYPES: { value: DataSourceType; label: string; icon: React.ElementType; description: string }[] = [
   { value: 'pipeline', label: 'Pipeline HubSpot', icon: GitBranch, description: 'Métricas de solicitudes, ventas y desempeño' },
   { value: 'property', label: 'Propiedades HubSpot', icon: Layers, description: 'Propiedades específicas de contactos o negocios' },
-  { value: 'google_sheets', label: 'Google Sheets', icon: FileSpreadsheet, description: 'Datos desde una hoja de cálculo' },
   { value: 'api', label: 'API Externa', icon: Globe, description: 'Datos desde un endpoint REST externo' },
 ];
 
@@ -63,7 +61,6 @@ const STAGE_CATEGORIES: { value: StageCategory; label: string; color: string; de
 const TYPE_ICONS: Record<DataSourceType, string> = {
   pipeline: '📊',
   property: '🔍',
-  google_sheets: '📄',
   manual: '✏️',
   api: '🌐',
 };
@@ -616,35 +613,7 @@ export function DataSources() {
                 </div>
               )}
 
-              {/* ── 3b. Google Sheets config ─────────────────── */}
-              {form.type === 'google_sheets' && (
-                <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-700">Configuración de Google Sheets</h3>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ID de la hoja</label>
-                    <input
-                      type="text"
-                      value={form.sheetId || ''}
-                      onChange={(e) => setForm((p) => ({ ...p, sheetId: e.target.value }))}
-                      placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple font-mono text-sm"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Parte de la URL: /spreadsheets/d/<strong>ID</strong>/edit</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Rango (A1 notation)</label>
-                    <input
-                      type="text"
-                      value={form.sheetRange || ''}
-                      onChange={(e) => setForm((p) => ({ ...p, sheetRange: e.target.value }))}
-                      placeholder="Hoja1!A1:Z100"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple font-mono text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* ── 3c. API config ───────────────────────────── */}
+              {/* ── 3b. API config ───────────────────────────── */}
               {form.type === 'api' && (
                 <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-700">Configuración de API</h3>
