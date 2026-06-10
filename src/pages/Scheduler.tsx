@@ -1122,7 +1122,6 @@ function StepMessage({
   // Variantes globales (sin slotId) y variantes del slot activo
   const globalVariants = variants.filter((v) => !v.scheduleSlotId);
   const slotVariants = (slotId: string) => variants.filter((v) => v.scheduleSlotId === slotId);
-  const activeVariants = activeTab === null ? globalVariants : slotVariants(activeTab);
 
   // El slot activo tiene variantes propias?
   const slotHasOwn = (slotId: string) => slotVariants(slotId).length > 0;
@@ -1280,7 +1279,7 @@ function StepMessage({
           Las variantes se evalúan de arriba a abajo. La primera que se cumpla será usada.
         </div>
       )}
-      <Button size="sm" variant="outline" onClick={() => addVariant(slotId)}>
+      <Button size="sm" variant="ghost" onClick={() => addVariant(slotId)}>
         <Plus className="w-4 h-4 mr-1" />Agregar Variante
       </Button>
     </div>
@@ -1417,15 +1416,15 @@ function StepMessage({
 
 function StepReview({
   campaign,
-  salesUsers,
+  externalUsers,
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
-  salesUsers: SalesUser[];
+  externalUsers: ExternalUser[];
 }) {
   const recipientCount = (() => {
     const config = campaign.recipientConfig;
     if (config.sourceType === 'sales_user_type' && config.salesUserTypes?.length) {
-      return salesUsers.filter((u) => config.salesUserTypes!.includes(u.tipo)).length;
+      return externalUsers.filter((u) => config.salesUserTypes!.includes(u.role)).length;
     }
     if (config.sourceType === 'specific_users') return config.specificUserIds?.length || 0;
     if (config.sourceType === 'channel') return config.channelIds?.length || 0;
@@ -1852,7 +1851,7 @@ export function Scheduler() {
             />
           )}
           {currentStep === 4 && <StepMessage campaign={formData} onChange={updateFormData} />}
-          {currentStep === 5 && <StepReview campaign={formData} salesUsers={salesUsers} />}
+          {currentStep === 5 && <StepReview campaign={formData} externalUsers={externalUsers} />}
         </Card>
 
         <div className="flex items-center justify-between">
