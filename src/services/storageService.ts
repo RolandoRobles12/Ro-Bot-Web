@@ -5,12 +5,14 @@ import { MessageAttachment } from '@/types';
 const ACCEPTED_TYPES: Record<MessageAttachment['type'], string[]> = {
   image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
   video: ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'],
-  audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/x-m4a'],
+  audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/x-m4a', 'audio/webm'],
 };
 
 export function getAttachmentType(mimeType: string): MessageAttachment['type'] | null {
+  // Strip codec parameters (e.g. "audio/webm;codecs=opus" → "audio/webm")
+  const baseMime = mimeType.split(';')[0].trim();
   for (const [type, mimes] of Object.entries(ACCEPTED_TYPES)) {
-    if (mimes.includes(mimeType)) return type as MessageAttachment['type'];
+    if (mimes.includes(baseMime)) return type as MessageAttachment['type'];
   }
   return null;
 }
