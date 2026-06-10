@@ -527,12 +527,45 @@ function replaceTemplateVariables(template: string, variables: Record<string, an
 // =                    HELPER: UPLOAD ATTACHMENT TO SLACK                  =
 // ==========================================================================
 
+// Resolves any channel reference to a real Slack channel ID.
+// chat.postMessage accepts names/user IDs, but files.completeUploadExternal requires an actual ID.
+async function resolveChannelId(slackClient: WebClient, channel: string): Promise<string> {
+  // Already a proper channel/DM/group ID
+  if (/^[CDGW][A-Z0-9]+$/i.test(channel)) return channel;
+
+  // Slack user ID → open DM to get the DM channel ID
+  if (/^U[A-Z0-9]+$/i.test(channel)) {
+    const dm = await slackClient.conversations.open({ users: channel });
+    return (dm.channel as any)?.id || channel;
+  }
+
+  // Channel name (with or without #) → look up in conversations list
+  const name = channel.startsWith('#') ? channel.slice(1) : channel;
+  let cursor: string | undefined;
+  do {
+    const list: any = await slackClient.conversations.list({
+      types: 'public_channel,private_channel',
+      limit: 200,
+      cursor,
+    });
+    const found = list.channels?.find((c: any) => c.name === name);
+    if (found?.id) return found.id;
+    cursor = list.response_metadata?.next_cursor;
+  } while (cursor);
+
+  return channel;
+}
+
+// Uploads all attachments to Slack and posts them as a single message.
+// If initialComment is provided it becomes the message text (avoids a separate chat.postMessage).
 async function uploadAttachmentsToSlack(
   token: string,
-  channel: string,
-  attachments: MessageAttachment[]
+  channelId: string,
+  attachments: MessageAttachment[],
+  initialComment?: string
 ): Promise<void> {
   const slackHeaders = { Authorization: `Bearer ${token}` };
+  const fileIds: { id: string; title: string }[] = [];
 
   for (const attachment of attachments) {
     console.log(`Uploading attachment: ${attachment.name} (${attachment.mimeType}, ${attachment.size} bytes)`);
@@ -546,7 +579,7 @@ async function uploadAttachmentsToSlack(
     const buffer = Buffer.from(dlResponse.data);
     console.log(`Downloaded ${attachment.name}: ${buffer.length} bytes`);
 
-    // 2. Get a pre-signed upload URL from Slack (v2 upload flow — direct HTTP, no SDK method needed)
+    // 2. Get a pre-signed upload URL from Slack (v2 upload flow)
     const urlResp = await axios.post(
       'https://slack.com/api/files.getUploadURLExternal',
       new URLSearchParams({ filename: attachment.name, length: String(buffer.length) }).toString(),
@@ -556,7 +589,6 @@ async function uploadAttachmentsToSlack(
       throw new Error(`Slack getUploadURLExternal failed: ${urlResp.data.error}`);
     }
     const { upload_url, file_id } = urlResp.data;
-    console.log(`Got Slack upload URL for ${attachment.name}, file_id: ${file_id}`);
 
     // 3. POST binary content to the pre-signed URL
     await axios.post(upload_url, buffer, {
@@ -566,17 +598,22 @@ async function uploadAttachmentsToSlack(
     });
     console.log(`Uploaded ${attachment.name} to Slack storage`);
 
-    // 4. Complete the upload and share to the channel
-    const completeResp = await axios.post(
-      'https://slack.com/api/files.completeUploadExternal',
-      { files: [{ id: file_id, title: attachment.name }], channel_id: channel },
-      { headers: { ...slackHeaders, 'Content-Type': 'application/json' } }
-    );
-    if (!completeResp.data.ok) {
-      throw new Error(`Slack completeUploadExternal failed: ${completeResp.data.error}`);
-    }
-    console.log(`Successfully shared ${attachment.name} to channel ${channel}`);
+    fileIds.push({ id: file_id, title: attachment.name });
   }
+
+  // 4. Complete ALL uploads in a single call so they arrive as one message
+  const completeBody: any = { files: fileIds, channel_id: channelId };
+  if (initialComment) completeBody.initial_comment = initialComment;
+
+  const completeResp = await axios.post(
+    'https://slack.com/api/files.completeUploadExternal',
+    completeBody,
+    { headers: { ...slackHeaders, 'Content-Type': 'application/json' } }
+  );
+  if (!completeResp.data.ok) {
+    throw new Error(`Slack completeUploadExternal failed: ${completeResp.data.error}`);
+  }
+  console.log(`Successfully shared ${fileIds.length} file(s) to channel ${channelId}`);
 }
 
 // ==========================================================================
@@ -607,24 +644,31 @@ export const sendSlackMessage = functions.https.onCall(
         }
 
         try {
-          const messagePayload: any = { channel, text: content };
-          if (blocks && blocks.length > 0) {
-            messagePayload.blocks = blocks;
-          }
-
-          const result = await slackClient.chat.postMessage(messagePayload);
-          // Use the resolved channel ID from the response (handles #name → C0123456)
-          const resolvedChannel = (result.channel as string) || channel;
-
+          let result: any;
           let attachmentError: string | undefined;
+
           if (attachments && attachments.length > 0) {
-            console.log(`Sending ${attachments.length} attachment(s) to channel ${resolvedChannel}`);
+            // When there are attachments, use files.completeUploadExternal with initial_comment
+            // so text + files arrive as ONE message (not two separate ones).
+            const resolvedChannelId = await resolveChannelId(slackClient, channel);
+            console.log(`Sending ${attachments.length} attachment(s) with text to channel ${resolvedChannelId}`);
             try {
-              await uploadAttachmentsToSlack(token, resolvedChannel, attachments);
+              await uploadAttachmentsToSlack(token, resolvedChannelId, attachments, content);
+              result = { ok: true, channel: resolvedChannelId };
             } catch (attachErr: any) {
               attachmentError = attachErr.message;
               console.error('Attachment upload failed:', attachErr.message);
+              // Fall back to sending text only
+              const msgPayload: any = { channel, text: content };
+              if (blocks && blocks.length > 0) msgPayload.blocks = blocks;
+              result = await slackClient.chat.postMessage(msgPayload);
             }
+          } else {
+            const messagePayload: any = { channel, text: content };
+            if (blocks && blocks.length > 0) {
+              messagePayload.blocks = blocks;
+            }
+            result = await slackClient.chat.postMessage(messagePayload);
           }
 
           results.push({ recipient, success: true, result, attachmentError });
@@ -791,16 +835,16 @@ export const processScheduledMessages = functions.pubsub
 
           for (const recipient of message.recipients) {
             const channel = recipient.id || recipient.name;
-            const messagePayload: any = { channel, text: message.content };
-            if (message.blocks && message.blocks.length > 0) {
-              messagePayload.blocks = message.blocks;
-            }
-
-            const scheduledResult = await slackClient.chat.postMessage(messagePayload);
-            const resolvedChannel = (scheduledResult.channel as string) || channel;
 
             if (message.attachments && message.attachments.length > 0) {
-              await uploadAttachmentsToSlack(token, resolvedChannel, message.attachments);
+              const resolvedChannelId = await resolveChannelId(slackClient, channel);
+              await uploadAttachmentsToSlack(token, resolvedChannelId, message.attachments, message.content);
+            } else {
+              const messagePayload: any = { channel, text: message.content };
+              if (message.blocks && message.blocks.length > 0) {
+                messagePayload.blocks = message.blocks;
+              }
+              await slackClient.chat.postMessage(messagePayload);
             }
 
             await db.collection('message_history').add({
