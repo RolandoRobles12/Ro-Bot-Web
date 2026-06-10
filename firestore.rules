@@ -2,17 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ⚠️ TEMPORARY: Allow all access for development without authentication
-    // TODO: Remove this and restore role-based rules when Firebase Auth is enabled
-    match /{document=**} {
-      allow read, write: if true;
-    }
-
-    /* ORIGINAL RULES - RESTORE WHEN FIREBASE AUTH IS ENABLED
-
-    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isAvivaDomain() {
+      return isAuthenticated() && request.auth.token.email.matches('.*@avivacredito\\.com');
     }
 
     function getUserData() {
@@ -20,7 +15,7 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return isAuthenticated() && getUserData().role == role;
+      return isAvivaDomain() && getUserData().role == role;
     }
 
     function isAdmin() {
@@ -35,11 +30,17 @@ service cloud.firestore {
       return hasRole('viewer') || isEditor();
     }
 
+    // Invitations — authenticated aviva users can read only their own invitation; admins manage
+    match /invitations/{email} {
+      allow read: if isAvivaDomain() && request.auth.token.email == email;
+      allow write: if isAdmin();
+    }
+
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow read: if isAvivaDomain();
+      allow create: if isAvivaDomain() && request.auth.uid == userId;
+      allow update: if isAdmin() || (isAvivaDomain() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
       allow delete: if isAdmin();
     }
 
@@ -66,7 +67,7 @@ service cloud.firestore {
     // Message history collection
     match /message_history/{historyId} {
       allow read: if isViewer();
-      allow create: if isAuthenticated();
+      allow create: if isAvivaDomain();
       allow update, delete: if isAdmin();
     }
 
@@ -82,6 +83,5 @@ service cloud.firestore {
       allow create: if isEditor();
       allow update, delete: if isEditor() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
-    */
   }
 }
