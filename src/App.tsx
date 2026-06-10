@@ -13,12 +13,10 @@ import { Scheduler } from './pages/Scheduler';
 import { Settings } from './pages/Settings';
 import { DataSources } from './pages/DataSources';
 import { UsersAdmin } from './pages/UsersAdmin';
+import { useAuth } from './hooks/useAuth';
 
 function App() {
-  // TEMPORARY: Disabled auth loading check for development
-  // import { useAuth } from './hooks/useAuth';
-  // const { loading } = useAuth();
-  // if (loading) { return loading screen }
+  useAuth(); // Initialize the single auth listener for the whole app
 
   return (
     <>

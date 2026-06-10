@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { MessageSquare } from 'lucide-react';
 
 export function Login() {
-  const { user, loading, signInWithGoogle } = useAuth();
+  const { signInWithGoogle } = useAuth();
+  const { user, loading } = useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {

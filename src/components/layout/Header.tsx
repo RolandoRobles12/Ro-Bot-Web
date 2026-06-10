@@ -5,13 +5,11 @@ import Select from 'react-select';
 import { SlackWorkspace } from '@/types';
 import { useEffect, useState } from 'react';
 import { workspaceService } from '@/services/firestore';
+import { useAuth } from '@/hooks/useAuth';
 
 export function Header() {
   const { toggleSidebar, selectedWorkspace, setSelectedWorkspace } = useAppStore();
-  // TEMPORARY: Disabled auth for development
-  // import { useAuth } from '@/hooks/useAuth';
-  // const { signOut } = useAuth();
-  const signOut = () => console.log('Sign out disabled in dev mode');
+  const { signOut } = useAuth();
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
 

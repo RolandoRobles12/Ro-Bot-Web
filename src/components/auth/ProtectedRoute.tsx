@@ -1,7 +1,6 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { UserRole } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 
 interface ProtectedRouteProps {
@@ -10,8 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
-  const { loading, user } = useAuth();
-  const { hasRole } = useAuthStore();
+  const { loading, user, hasRole } = useAuthStore();
 
   if (loading) {
     return (
