@@ -84,20 +84,6 @@ function parseFirestoreDoc(fields: Record<string, any>): any {
   return result;
 }
 
-// Obtiene un usuario externo por ID usando la REST API pública de Firestore (no requiere service account)
-async function getExternalUserDoc(userId: string): Promise<any | null> {
-  const projectId = getExternalProjectId();
-  if (!projectId) return null;
-  try {
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${userId}`;
-    const res = await axios.get(url);
-    if (!res.data?.fields) return null;
-    return mapExternalUser(userId, parseFirestoreDoc(res.data.fields));
-  } catch (err) {
-    console.warn('Error fetching external user via REST:', err);
-    return null;
-  }
-}
 
 // Consulta usuarios externos por role usando la REST API pública de Firestore
 async function queryExternalUsers(role?: string): Promise<any[]> {
