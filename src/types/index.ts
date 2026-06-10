@@ -317,7 +317,7 @@ export interface Pipeline {
  * - 'manual': Manually entered data
  * - 'api': External API
  */
-export type DataSourceType = 'pipeline' | 'property' | 'google_sheets' | 'manual' | 'api';
+export type DataSourceType = 'pipeline' | 'property' | 'manual' | 'api';
 
 /**
  * A variable exported by a data source.
