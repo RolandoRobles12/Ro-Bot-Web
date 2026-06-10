@@ -587,6 +587,7 @@ export const sendSlackMessage = functions.https.onCall(
   async (data: SendMessageData, context) => {
     try {
       const { workspaceId, content, blocks, recipients, sender, templateId, scheduledMessageId, attachments } = data;
+      console.log(`sendSlackMessage: workspaceId=${workspaceId}, attachments=${JSON.stringify(attachments ?? null)}`);
       const { token } = await getSlackToken(workspaceId, sender);
       const slackClient = new WebClient(token);
 
