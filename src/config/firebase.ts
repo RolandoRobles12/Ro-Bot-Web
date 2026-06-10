@@ -26,7 +26,6 @@ const externalFirebaseConfig = {
 };
 
 export const hasExternalConfig = !!externalFirebaseConfig.apiKey && !!externalFirebaseConfig.projectId;
-console.log('[Firebase] usersDb apunta a proyecto:', hasExternalConfig ? externalFirebaseConfig.projectId : firebaseConfig.projectId);
 export const externalProjectId = externalFirebaseConfig.projectId || null;
 
 // Debug: Log config to verify env vars are loaded (remove in production)
