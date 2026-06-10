@@ -112,13 +112,15 @@ export function SendMessage() {
       }
 
       // Call Firebase Function to send message
+      const allAttachments = [...(selectedTemplate?.attachments || []), ...extraAttachments];
+      console.log('[SendMessage] attachments to send:', allAttachments.length, allAttachments.map(a => a.name));
       const sendSlackMessage = httpsCallable(functions, 'sendSlackMessage');
       await sendSlackMessage({
         workspaceId: selectedWorkspace.id,
         content: finalContent,
         recipients: [recipient],
         sender,
-        attachments: [...(selectedTemplate?.attachments || []), ...extraAttachments],
+        attachments: allAttachments,
       });
 
       toast.success('Mensaje enviado exitosamente');
