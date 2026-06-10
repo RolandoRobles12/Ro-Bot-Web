@@ -364,13 +364,14 @@ export const ruleService = {
 // ==========================================================================
 
 // External users service
-// Lee la colección users del proyecto Firebase externo, filtrando activos.
+// Lee la colección users del proyecto Firebase externo.
+// Incluye 'active' e 'invited'; excluye 'suspended' y 'inactive'.
 export const externalUserService = {
   getAll: async (): Promise<ExternalUser[]> => {
     const snap = await getDocs(
       query(
         collection(usersDb, 'users'),
-        where('status', '==', 'active'),
+        where('status', 'in', ['active', 'invited']),
         orderBy('fullName', 'asc')
       )
     );
@@ -380,7 +381,7 @@ export const externalUserService = {
     const snap = await getDocs(
       query(
         collection(usersDb, 'users'),
-        where('status', '==', 'active'),
+        where('status', 'in', ['active', 'invited']),
         where('role', '==', role),
         orderBy('fullName', 'asc')
       )
