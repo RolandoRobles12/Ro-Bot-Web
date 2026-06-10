@@ -30,9 +30,9 @@ service cloud.firestore {
       return hasRole('viewer') || isEditor();
     }
 
-    // Invitations — authenticated aviva users can read only their own invitation; admins manage
+    // Invitations — aviva users can read their own; admins can read/write all
     match /invitations/{email} {
-      allow read: if isAvivaDomain() && request.auth.token.email == email;
+      allow read: if isAdmin() || (isAvivaDomain() && request.auth.token.email == email);
       allow write: if isAdmin();
     }
 

@@ -12,6 +12,7 @@ import { Teams } from './pages/Teams';
 import { Scheduler } from './pages/Scheduler';
 import { Settings } from './pages/Settings';
 import { DataSources } from './pages/DataSources';
+import { UsersAdmin } from './pages/UsersAdmin';
 
 function App() {
   // TEMPORARY: Disabled auth loading check for development
@@ -119,6 +120,17 @@ function App() {
               <ProtectedRoute requiredRole="editor">
                 <Layout>
                   <DataSources />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <Layout>
+                  <UsersAdmin />
                 </Layout>
               </ProtectedRoute>
             }
