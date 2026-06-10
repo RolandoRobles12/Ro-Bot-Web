@@ -403,7 +403,31 @@ export interface CampaignDataSourceConfig {
 // =                     SALES COACHING SYSTEM TYPES                        =
 // ==========================================================================
 
-export type SalesUserType = 'kiosco' | 'atn' | 'ba' | 'alianza';
+export type SalesUserType = string;
+
+export interface Position {
+  id: string;
+  name: string;
+  area: string;
+  level: string;
+  productId: string;
+}
+
+export interface ExternalUser {
+  id: string;
+  fullName: string;
+  first: string;
+  last: string;
+  email: string;
+  role: string;
+  area: string;
+  region: string;
+  quiosco: string;
+  slackOpsId: string;
+  hubspot: string;
+  status: string;
+  managerName: string;
+}
 
 export type CategoriaDesempeno =
   | 'critico'      // 0 - Desempeño crítico, requiere intervención inmediata
@@ -556,6 +580,7 @@ export interface MessageVariant {
   // Message content
   messageTemplate: string;            // Template with {{variables}}
   priority: number;                   // Lower = higher priority
+  scheduleSlotId?: string;            // Si está definido, solo aplica a ese horario
 }
 
 /**

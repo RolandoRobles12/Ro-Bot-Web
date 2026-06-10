@@ -4,9 +4,9 @@ import { Plus, Trash2, Edit2, Users, Target, Activity, RefreshCw } from 'lucide-
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { salesUserService, workspaceService } from '@/services/firestore';
+import { salesUserService, workspaceService, positionService } from '@/services/firestore';
 import { useAuthStore } from '@/store/authStore';
-import type { SalesUser, SalesUserType, SlackWorkspace } from '@/types';
+import type { SalesUser, SalesUserType, SlackWorkspace, Position } from '@/types';
 
 interface TeamFormData {
   workspaceId: string;
@@ -22,12 +22,6 @@ interface TeamFormData {
   gerenteId?: string;
 }
 
-const USER_TYPES: { value: SalesUserType; label: string; description: string }[] = [
-  { value: 'kiosco', label: 'Kiosco', description: 'Gerente de kiosco con promotores' },
-  { value: 'atn', label: 'ATN', description: 'Promotor Aviva Tu Negocio' },
-  { value: 'ba', label: 'BA', description: 'Embajador Aviva Tu Compra' },
-  { value: 'alianza', label: 'Alianza', description: 'Embajador de Alianzas' },
-];
 
 const PIPELINES = [
   { value: 'default', label: 'Pipeline Predeterminado' },
@@ -38,6 +32,7 @@ export function Teams() {
   const { user } = useAuthStore();
   const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>('');
   const [selectedType, setSelectedType] = useState<SalesUserType | 'all'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -52,6 +47,7 @@ export function Teams() {
 
   useEffect(() => {
     loadWorkspaces();
+    positionService.getAll().then(setPositions).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -248,19 +244,20 @@ export function Teams() {
     ? salesUsers
     : salesUsers.filter(u => u.tipo === selectedType);
 
-  const getUserTypeLabel = (tipo: SalesUserType) => {
-    const typeObj = USER_TYPES.find(t => t.value === tipo);
-    return typeObj?.label || tipo;
-  };
+  const getUserTypeLabel = (tipo: SalesUserType) => tipo;
+
+  const POSITION_COLORS = [
+    'bg-blue-100 text-blue-800',
+    'bg-green-100 text-green-800',
+    'bg-purple-100 text-purple-800',
+    'bg-orange-100 text-orange-800',
+    'bg-pink-100 text-pink-800',
+    'bg-teal-100 text-teal-800',
+  ];
 
   const getUserTypeColor = (tipo: SalesUserType) => {
-    const colors: Record<SalesUserType, string> = {
-      kiosco: 'bg-blue-100 text-blue-800',
-      atn: 'bg-green-100 text-green-800',
-      ba: 'bg-purple-100 text-purple-800',
-      alianza: 'bg-orange-100 text-orange-800',
-    };
-    return colors[tipo] || 'bg-gray-100 text-gray-800';
+    const idx = positions.findIndex(p => p.name === tipo);
+    return idx >= 0 ? POSITION_COLORS[idx % POSITION_COLORS.length] : 'bg-gray-100 text-gray-800';
   };
 
   return (
@@ -331,9 +328,9 @@ export function Teams() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
             >
               <option value="all">Todos los tipos</option>
-              {USER_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
+              {positions.map((pos) => (
+                <option key={pos.id} value={pos.name}>
+                  {pos.name}
                 </option>
               ))}
             </select>
@@ -353,13 +350,13 @@ export function Teams() {
           </div>
         </div>
 
-        {USER_TYPES.map((type) => {
-          const count = salesUsers.filter(u => u.tipo === type.value).length;
+        {positions.slice(0, 3).map((pos) => {
+          const count = salesUsers.filter(u => u.tipo === pos.name).length;
           return (
-            <div key={type.value} className="bg-white rounded-lg shadow p-6">
+            <div key={pos.id} className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">{type.label}s</p>
+                  <p className="text-sm text-gray-600 truncate" title={pos.name}>{pos.name}</p>
                   <p className="text-2xl font-bold text-gray-900">{count}</p>
                 </div>
                 <Target className="w-8 h-8 text-slack-purple" />
@@ -540,9 +537,10 @@ export function Teams() {
                       {...register('tipo', { required: true })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
                     >
-                      {USER_TYPES.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label} - {type.description}
+                      <option value="">Selecciona una posición</option>
+                      {positions.map((pos) => (
+                        <option key={pos.id} value={pos.name}>
+                          {pos.name} — {pos.area}
                         </option>
                       ))}
                     </select>
@@ -634,8 +632,8 @@ export function Teams() {
                     </select>
                   </div>
 
-                  {/* Equipo (solo para Kioscos) */}
-                  {tipoSeleccionado === 'kiosco' && (
+                  {/* Equipo (opcional) */}
+                  {tipoSeleccionado && (
                     <>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">

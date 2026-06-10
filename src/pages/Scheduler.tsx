@@ -40,8 +40,9 @@ import { useAuthStore } from '@/store/authStore';
 import {
   campaignService,
   campaignExecutionService,
-  salesUserService,
+  externalUserService,
   dataSourceService,
+  positionService,
 } from '@/services/firestore';
 import type {
   MessageCampaign,
@@ -54,8 +55,9 @@ import type {
   RecipientSourceType,
   SalesUserType,
   CategoriaDesempeno,
-  SalesUser,
+  ExternalUser,
   DataSource,
+  Position,
 } from '@/types';
 
 // ==========================================================================
@@ -72,12 +74,6 @@ const DAYS_OF_WEEK = [
   { value: 6, label: 'Sáb', fullLabel: 'Sábado' },
 ];
 
-const SALES_USER_TYPES: { value: SalesUserType; label: string; emoji: string }[] = [
-  { value: 'kiosco', label: 'Kioscos', emoji: '🏪' },
-  { value: 'atn', label: 'Aviva Tu Negocio', emoji: '💼' },
-  { value: 'ba', label: 'Embajadores BA', emoji: '🎯' },
-  { value: 'alianza', label: 'Alianzas', emoji: '🤝' },
-];
 
 const PERFORMANCE_CATEGORIES: { value: CategoriaDesempeno; label: string; emoji: string; color: string }[] = [
   { value: 'critico', label: 'Crítico', emoji: '🚨', color: 'bg-red-100 text-red-800' },
@@ -154,7 +150,7 @@ const CAMPAIGN_PRESETS = [
     activeColor: 'border-blue-500 bg-blue-100',
     defaults: {
       name: 'Reporte Semanal de Métricas',
-      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['kiosco', 'atn', 'ba', 'alianza'] as SalesUserType[] },
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: [] as SalesUserType[] },
       scheduleSlots: [{ id: 'preset-slot-1', daysOfWeek: [1], time: '09:00', timezone: 'America/Mexico_City', label: 'Lunes matutino' }],
       dataConfig: { fetchSolicitudes: true, fetchVentasAvanzadas: false, fetchVentasReales: true, fetchVideollamadas: false, calculatePerformanceCategory: true, dateRange: 'current_week' as const },
       messageVariants: [
@@ -175,7 +171,7 @@ const CAMPAIGN_PRESETS = [
       name: 'Seguimiento Tarjeta Táctica',
       campaignType: 'tarjeta_tactica' as const,
       tarjetaNombre: 'La Puerta',
-      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['ba'] as SalesUserType[] },
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: [] as SalesUserType[] },
       scheduleSlots: [{ id: 'preset-slot-2', daysOfWeek: [1, 2, 3, 4, 5], time: '11:15', timezone: 'America/Mexico_City', label: 'Seguimiento La Puerta' }],
       dataConfig: { fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false, fetchVideollamadas: true, calculatePerformanceCategory: false, dateRange: 'today' as const },
     },
@@ -189,7 +185,7 @@ const CAMPAIGN_PRESETS = [
     activeColor: 'border-red-500 bg-red-100',
     defaults: {
       name: 'Alerta de Coaching — Bajo Desempeño',
-      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: ['kiosco', 'atn', 'alianza'] as SalesUserType[] },
+      recipientConfig: { sourceType: 'sales_user_type' as RecipientSourceType, salesUserTypes: [] as SalesUserType[] },
       scheduleSlots: [{ id: 'preset-slot-3', daysOfWeek: [3], time: '14:00', timezone: 'America/Mexico_City', label: 'Miércoles revisión' }],
       dataConfig: { fetchSolicitudes: true, fetchVentasReales: true, fetchVentasAvanzadas: false, fetchVideollamadas: false, calculatePerformanceCategory: true, dateRange: 'current_week' as const },
       messageVariants: [
@@ -248,9 +244,7 @@ function formatScheduleSummary(slots: CampaignScheduleSlot[]): string {
 
 function formatRecipientSummary(config: CampaignRecipientConfig): string {
   if (config.sourceType === 'sales_user_type' && config.salesUserTypes?.length) {
-    return config.salesUserTypes
-      .map((t) => SALES_USER_TYPES.find((st) => st.value === t)?.label || t)
-      .join(', ');
+    return config.salesUserTypes.join(', ');
   }
   if (config.sourceType === 'specific_users' && config.specificUserIds?.length) {
     return `${config.specificUserIds.length} usuario(s)`;
@@ -449,7 +443,8 @@ function StepBasics({
 function StepRecipients({
   campaign,
   onChange,
-  salesUsers,
+  externalUsers,
+  positions,
   slackChannels,
   slackUsers: _slackUsers,
   loadingSlack,
@@ -457,7 +452,8 @@ function StepRecipients({
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
-  salesUsers: SalesUser[];
+  externalUsers: ExternalUser[];
+  positions: Position[];
   slackChannels: SlackChannel[];
   slackUsers: SlackUser[];
   loadingSlack: boolean;
@@ -503,8 +499,8 @@ function StepRecipients({
   };
 
   const userCounts: Record<string, number> = {};
-  for (const type of SALES_USER_TYPES) {
-    userCounts[type.value] = salesUsers.filter((u) => u.tipo === type.value).length;
+  for (const pos of positions) {
+    userCounts[pos.name] = externalUsers.filter((u) => u.role === pos.name).length;
   }
 
   const filteredChannels = slackChannels.filter(
@@ -549,30 +545,36 @@ function StepRecipients({
       {config.sourceType === 'sales_user_type' && (
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">Tipos de vendedor</label>
-          <div className="grid grid-cols-2 gap-3">
-            {SALES_USER_TYPES.map((type) => {
-              const isSelected = config.salesUserTypes?.includes(type.value) || false;
-              return (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => toggleSalesUserType(type.value)}
-                  className={`flex items-center space-x-3 p-3 rounded-lg border-2 transition-all ${
-                    isSelected ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="text-xl">{type.emoji}</span>
-                  <div className="text-left">
-                    <div className="font-medium text-sm text-gray-900">{type.label}</div>
-                    <div className="text-xs text-gray-500">{userCounts[type.value] || 0} vendedor(es)</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {positions.length === 0 ? (
+            <div className="bg-yellow-50 rounded-lg p-4 text-sm text-yellow-800">
+              No hay posiciones configuradas en el catálogo.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {positions.map((pos) => {
+                const isSelected = config.salesUserTypes?.includes(pos.name) || false;
+                return (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => toggleSalesUserType(pos.name)}
+                    className={`flex items-center space-x-3 p-3 rounded-lg border-2 transition-all ${
+                      isSelected ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">👤</span>
+                    <div className="text-left">
+                      <div className="font-medium text-sm text-gray-900">{pos.name}</div>
+                      <div className="text-xs text-gray-500">{userCounts[pos.name] || 0} vendedor(es)</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {config.salesUserTypes && config.salesUserTypes.length > 0 && (
             <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-800">
-              Se enviará a <strong>{config.salesUserTypes.reduce((sum, t) => sum + (userCounts[t] || 0), 0)} vendedor(es)</strong> de tipo: {config.salesUserTypes.map((t) => SALES_USER_TYPES.find((st) => st.value === t)?.label).join(', ')}
+              Se enviará a <strong>{config.salesUserTypes.reduce((sum, t) => sum + (userCounts[t] || 0), 0)} vendedor(es)</strong> de tipo: {config.salesUserTypes.join(', ')}
             </div>
           )}
         </div>
@@ -582,15 +584,14 @@ function StepRecipients({
       {config.sourceType === 'specific_users' && (
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">Seleccionar vendedores</label>
-          {salesUsers.length === 0 ? (
+          {externalUsers.length === 0 ? (
             <div className="bg-yellow-50 rounded-lg p-4 text-sm text-yellow-800">
-              No hay vendedores registrados. Agrega vendedores desde la sección de Equipos.
+              No hay usuarios activos en el directorio externo.
             </div>
           ) : (
             <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y">
-              {salesUsers.map((u) => {
+              {externalUsers.map((u) => {
                 const isSelected = config.specificUserIds?.includes(u.id) || false;
-                const typeInfo = SALES_USER_TYPES.find((t) => t.value === u.tipo);
                 return (
                   <button
                     key={u.id}
@@ -599,10 +600,10 @@ function StepRecipients({
                     className={`w-full flex items-center space-x-3 p-3 text-left transition-colors ${isSelected ? 'bg-slack-purple/5' : 'hover:bg-gray-50'}`}
                   >
                     <input type="checkbox" checked={isSelected} readOnly className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple" />
-                    <span className="text-sm">{typeInfo?.emoji}</span>
+                    <span className="text-sm">👤</span>
                     <div>
-                      <div className="font-medium text-sm text-gray-900">{u.nombre}</div>
-                      <div className="text-xs text-gray-500">{typeInfo?.label}</div>
+                      <div className="font-medium text-sm text-gray-900">{u.fullName}</div>
+                      <div className="text-xs text-gray-500">{u.role}</div>
                     </div>
                   </button>
                 );
@@ -1103,6 +1104,9 @@ function StepMessage({
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
 }) {
   const variants = campaign.messageVariants;
+  const slots = campaign.scheduleSlots || [];
+  // null = pestaña global; string = slotId
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [showAI, setShowAI] = useState(campaign.aiConfig?.enabled || false);
 
   const availableVars = getAvailableVariables(campaign.dataConfig);
@@ -1115,15 +1119,25 @@ function StepMessage({
     onChange({ aiConfig: { ...aiConfig, ...updates } });
   };
 
-  const addVariant = () => {
+  // Variantes globales (sin slotId) y variantes del slot activo
+  const globalVariants = variants.filter((v) => !v.scheduleSlotId);
+  const slotVariants = (slotId: string) => variants.filter((v) => v.scheduleSlotId === slotId);
+  const activeVariants = activeTab === null ? globalVariants : slotVariants(activeTab);
+
+  // El slot activo tiene variantes propias?
+  const slotHasOwn = (slotId: string) => slotVariants(slotId).length > 0;
+
+  const addVariant = (slotId?: string) => {
+    const scopedVariants = slotId ? slotVariants(slotId) : globalVariants;
     onChange({
       messageVariants: [...variants, {
         id: generateId(),
-        label: `Variante ${variants.length + 1}`,
+        label: `Variante ${scopedVariants.length + 1}`,
         conditionType: 'performance_category',
         performanceCategories: [],
         messageTemplate: '',
-        priority: variants.length,
+        priority: scopedVariants.length,
+        ...(slotId ? { scheduleSlotId: slotId } : {}),
       }],
     });
   };
@@ -1133,11 +1147,27 @@ function StepMessage({
   };
 
   const removeVariant = (variantId: string) => {
-    if (variants.length <= 1) {
-      toast.error('Debe haber al menos una variante de mensaje');
+    const scopeVariants = activeTab === null ? globalVariants : slotVariants(activeTab);
+    if (scopeVariants.length <= 1) {
+      toast.error('Debe haber al menos una variante en este horario');
       return;
     }
     onChange({ messageVariants: variants.filter((v) => v.id !== variantId) });
+  };
+
+  // Copia las variantes globales al slot indicado
+  const personalizeSlot = (slotId: string) => {
+    const copies = globalVariants.map((v) => ({
+      ...v,
+      id: generateId(),
+      scheduleSlotId: slotId,
+    }));
+    onChange({ messageVariants: [...variants, ...copies] });
+  };
+
+  // Elimina las variantes propias del slot (vuelve a usar las globales)
+  const revertSlot = (slotId: string) => {
+    onChange({ messageVariants: variants.filter((v) => v.scheduleSlotId !== slotId) });
   };
 
   const togglePerformanceCategory = (variantId: string, category: CategoriaDesempeno) => {
@@ -1156,25 +1186,116 @@ function StepMessage({
     updateVariant(variantId, { messageTemplate: variant.messageTemplate + `{{${variableName}}}` });
   };
 
+  // Helper: renderiza la lista de variantes de un scope dado
+  const renderVariants = (scopeVariants: MessageVariant[], slotId?: string) => (
+    <div className="space-y-4">
+      {scopeVariants.sort((a, b) => a.priority - b.priority).map((variant, index) => (
+        <div key={variant.id} className={`border rounded-lg overflow-hidden ${variant.conditionType === 'always' ? 'border-gray-300 bg-gray-50' : 'border-slack-purple/30'}`}>
+          <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+            <div className="flex items-center space-x-3">
+              <span className="text-xs font-medium text-gray-400">#{index + 1}</span>
+              <input type="text" value={variant.label} onChange={(e) => updateVariant(variant.id, { label: e.target.value })}
+                className="font-medium text-sm text-gray-900 border-none focus:ring-0 p-0 bg-transparent" placeholder="Nombre de la variante" />
+            </div>
+            {variant.conditionType !== 'always' && (
+              <button type="button" onClick={() => removeVariant(variant.id)} className="p-1 text-red-400 hover:text-red-600">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <div className="p-4 space-y-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Condición de envío</label>
+              <select value={variant.conditionType} onChange={(e) => updateVariant(variant.id, { conditionType: e.target.value as MessageVariant['conditionType'] })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm">
+                <option value="always">Siempre (mensaje por defecto)</option>
+                <option value="performance_category">Cuando la categoría de desempeño sea...</option>
+                <option value="metric_threshold">Cuando una métrica cumpla un umbral...</option>
+              </select>
+            </div>
+            {variant.conditionType === 'performance_category' && (
+              <div>
+                <label className="block text-sm text-gray-600 mb-2">Usar este mensaje cuando el desempeño sea:</label>
+                <div className="flex flex-wrap gap-2">
+                  {PERFORMANCE_CATEGORIES.map((cat) => {
+                    const isSelected = variant.performanceCategories?.includes(cat.value) || false;
+                    return (
+                      <button key={cat.value} type="button" onClick={() => togglePerformanceCategory(variant.id, cat.value)}
+                        className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${isSelected ? cat.color + ' ring-2 ring-offset-1 ring-current' : 'bg-gray-100 text-gray-600'}`}>
+                        <span>{cat.emoji}</span><span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!campaign.dataConfig?.calculatePerformanceCategory && (
+                  <p className="text-xs text-amber-600 mt-2"><AlertTriangle className="w-3 h-3 inline mr-1" />Activa &quot;Categoría de desempeño&quot; en el paso de Datos para usar esta condición.</p>
+                )}
+              </div>
+            )}
+            {variant.conditionType === 'metric_threshold' && (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Métrica</label>
+                  <select value={variant.metricField || ''} onChange={(e) => updateVariant(variant.id, { metricField: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent">
+                    <option value="">Seleccionar...</option>
+                    {METRIC_FIELDS.map((f) => (<option key={f.value} value={f.value}>{f.label}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Operador</label>
+                  <select value={variant.metricOperator || 'gt'} onChange={(e) => updateVariant(variant.id, { metricOperator: e.target.value as MessageVariant['metricOperator'] })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent">
+                    {METRIC_OPERATORS.map((op) => (<option key={op.value} value={op.value}>{op.label}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Valor</label>
+                  <div className="flex space-x-2">
+                    <input type="number" value={variant.metricValue ?? ''} onChange={(e) => updateVariant(variant.id, { metricValue: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent" placeholder="Valor" />
+                    {variant.metricOperator === 'between' && (
+                      <input type="number" value={variant.metricValueEnd ?? ''} onChange={(e) => updateVariant(variant.id, { metricValueEnd: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent" placeholder="Valor fin" />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Plantilla del mensaje</label>
+              <textarea value={variant.messageTemplate} onChange={(e) => updateVariant(variant.id, { messageTemplate: e.target.value })} rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm font-mono"
+                placeholder={variant.conditionType === 'always' ? 'Ej: Hola {{nombre}}, llevas {{solicitudes}} solicitudes.' : 'Ej: 🚨 URGENTE {{nombre}}: solo llevas {{pct_ventas}}% de tu meta.'} />
+              <div className="flex flex-wrap gap-1 mt-2">
+                {availableVars.slice(0, 10).map((v) => (
+                  <button key={v.name} type="button" onClick={() => insertVariable(variant.id, v.name)} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded hover:bg-slack-purple/10 hover:text-slack-purple transition-colors" title={v.description}>
+                    {`{{${v.name}}}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+      {scopeVariants.length > 1 && (
+        <div className="bg-yellow-50 rounded-lg p-3 text-sm text-yellow-800">
+          <AlertTriangle className="w-4 h-4 inline mr-1" />
+          Las variantes se evalúan de arriba a abajo. La primera que se cumpla será usada.
+        </div>
+      )}
+      <Button size="sm" variant="outline" onClick={() => addVariant(slotId)}>
+        <Plus className="w-4 h-4 mr-1" />Agregar Variante
+      </Button>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Contenido del Mensaje</h3>
-          <p className="text-sm text-gray-500">
-            Escribe tu mensaje usando variables. Puedes crear variantes condicionales para personalizar según desempeño.
-          </p>
-        </div>
-        <Button size="sm" onClick={addVariant}>
-          <Plus className="w-4 h-4 mr-1" />Agregar Variante
-        </Button>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Contenido del Mensaje</h3>
+        <p className="text-sm text-gray-500">Escribe tu mensaje usando variables. Puedes definir mensajes diferentes por horario.</p>
       </div>
 
-      {/* Available variables quick reference */}
+      {/* Variables quick reference */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-        <p className="text-xs font-medium text-blue-900 mb-2">
-          Variables disponibles (clic para insertar en la variante activa):
-        </p>
+        <p className="text-xs font-medium text-blue-900 mb-2">Variables disponibles (clic para insertar en la variante activa):</p>
         <div className="flex flex-wrap gap-1">
           {availableVars.map((v) => (
             <span key={v.name} className="px-2 py-0.5 text-xs bg-white text-blue-700 rounded border border-blue-200 font-mono cursor-default" title={v.description}>
@@ -1184,133 +1305,50 @@ function StepMessage({
         </div>
       </div>
 
-      {/* Variants */}
-      <div className="space-y-4">
-        {variants
-          .sort((a, b) => a.priority - b.priority)
-          .map((variant, index) => (
-            <div key={variant.id} className={`border rounded-lg overflow-hidden ${variant.conditionType === 'always' ? 'border-gray-300 bg-gray-50' : 'border-slack-purple/30'}`}>
-              {/* Variant header */}
-              <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-                <div className="flex items-center space-x-3">
-                  <span className="text-xs font-medium text-gray-400">#{index + 1}</span>
-                  <input
-                    type="text"
-                    value={variant.label}
-                    onChange={(e) => updateVariant(variant.id, { label: e.target.value })}
-                    className="font-medium text-sm text-gray-900 border-none focus:ring-0 p-0 bg-transparent"
-                    placeholder="Nombre de la variante"
-                  />
-                </div>
-                {variant.conditionType !== 'always' && (
-                  <button type="button" onClick={() => removeVariant(variant.id)} className="p-1 text-red-400 hover:text-red-600">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              <div className="p-4 space-y-4">
-                {/* Condition type */}
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Condición de envío</label>
-                  <select
-                    value={variant.conditionType}
-                    onChange={(e) => updateVariant(variant.id, { conditionType: e.target.value as MessageVariant['conditionType'] })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                  >
-                    <option value="always">Siempre (mensaje por defecto)</option>
-                    <option value="performance_category">Cuando la categoría de desempeño sea...</option>
-                    <option value="metric_threshold">Cuando una métrica cumpla un umbral...</option>
-                  </select>
-                </div>
-
-                {/* Performance category selector */}
-                {variant.conditionType === 'performance_category' && (
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-2">Usar este mensaje cuando el desempeño sea:</label>
-                    <div className="flex flex-wrap gap-2">
-                      {PERFORMANCE_CATEGORIES.map((cat) => {
-                        const isSelected = variant.performanceCategories?.includes(cat.value) || false;
-                        return (
-                          <button
-                            key={cat.value}
-                            type="button"
-                            onClick={() => togglePerformanceCategory(variant.id, cat.value)}
-                            className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${isSelected ? cat.color + ' ring-2 ring-offset-1 ring-current' : 'bg-gray-100 text-gray-600'}`}
-                          >
-                            <span>{cat.emoji}</span>
-                            <span>{cat.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {!campaign.dataConfig?.calculatePerformanceCategory && (
-                      <p className="text-xs text-amber-600 mt-2">
-                        <AlertTriangle className="w-3 h-3 inline mr-1" />
-                        Activa &quot;Categoría de desempeño&quot; en el paso de Datos para usar esta condición.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Metric threshold */}
-                {variant.conditionType === 'metric_threshold' && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Métrica</label>
-                      <select value={variant.metricField || ''} onChange={(e) => updateVariant(variant.id, { metricField: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent">
-                        <option value="">Seleccionar...</option>
-                        {METRIC_FIELDS.map((f) => (<option key={f.value} value={f.value}>{f.label}</option>))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Operador</label>
-                      <select value={variant.metricOperator || 'gt'} onChange={(e) => updateVariant(variant.id, { metricOperator: e.target.value as MessageVariant['metricOperator'] })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent">
-                        {METRIC_OPERATORS.map((op) => (<option key={op.value} value={op.value}>{op.label}</option>))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Valor</label>
-                      <div className="flex space-x-2">
-                        <input type="number" value={variant.metricValue ?? ''} onChange={(e) => updateVariant(variant.id, { metricValue: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent" placeholder="Valor" />
-                        {variant.metricOperator === 'between' && (
-                          <input type="number" value={variant.metricValueEnd ?? ''} onChange={(e) => updateVariant(variant.id, { metricValueEnd: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent" placeholder="Valor fin" />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Message template */}
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Plantilla del mensaje</label>
-                  <textarea
-                    value={variant.messageTemplate}
-                    onChange={(e) => updateVariant(variant.id, { messageTemplate: e.target.value })}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm font-mono"
-                    placeholder={variant.conditionType === 'always'
-                      ? 'Ej: Hola {{nombre}}, llevas {{solicitudes}} solicitudes ({{pct_solicitudes}}%) y ${{ventas}} en ventas ({{pct_ventas}}%).'
-                      : 'Ej: 🚨 URGENTE {{nombre}}: solo llevas {{pct_ventas}}% de tu meta. ¡Acelera!'}
-                  />
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {availableVars.slice(0, 10).map((v) => (
-                      <button key={v.name} type="button" onClick={() => insertVariable(variant.id, v.name)} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded hover:bg-slack-purple/10 hover:text-slack-purple transition-colors" title={v.description}>
-                        {`{{${v.name}}}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* Tabs por horario (solo si hay más de un slot) */}
+      {slots.length > 1 && (
+        <div className="flex gap-1 border-b border-gray-200 overflow-x-auto pb-px">
+          <button type="button" onClick={() => setActiveTab(null)}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === null ? 'border-slack-purple text-slack-purple' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            Todos los horarios
+          </button>
+          {slots.map((slot, i) => (
+            <button key={slot.id} type="button" onClick={() => setActiveTab(slot.id)}
+              className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === slot.id ? 'border-slack-purple text-slack-purple' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {slot.label || `Horario ${i + 1}`}
+              {slotHasOwn(slot.id) && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-slack-purple inline-block" />}
+            </button>
           ))}
-      </div>
-
-      {variants.length > 1 && (
-        <div className="bg-yellow-50 rounded-lg p-3 text-sm text-yellow-800">
-          <AlertTriangle className="w-4 h-4 inline mr-1" />
-          Las variantes condicionales se evalúan de arriba a abajo. La primera variante cuya condición se cumpla será usada. Si ninguna se cumple, se usa el mensaje &quot;Siempre&quot;.
         </div>
+      )}
+
+      {/* Contenido de la pestaña activa */}
+      {activeTab === null ? (
+        // Pestaña global
+        renderVariants(globalVariants)
+      ) : (
+        // Pestaña de un slot específico
+        slotHasOwn(activeTab) ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">Mensaje personalizado para este horario.</p>
+              <button type="button" onClick={() => revertSlot(activeTab)}
+                className="text-xs text-red-500 hover:text-red-700 underline">
+                Quitar personalización (usar mensaje global)
+              </button>
+            </div>
+            {renderVariants(slotVariants(activeTab), activeTab)}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+              <p className="text-sm text-gray-600 mb-3">Este horario usa el mensaje global. Puedes personalizarlo de forma independiente.</p>
+              <Button size="sm" onClick={() => personalizeSlot(activeTab)}>
+                <Plus className="w-4 h-4 mr-1" />Personalizar este horario
+              </Button>
+            </div>
+          </div>
+        )
       )}
 
       {/* AI Configuration (collapsible) */}
@@ -1554,7 +1592,8 @@ export function Scheduler() {
   const { user } = useAuthStore();
 
   const [campaigns, setCampaigns] = useState<MessageCampaign[]>([]);
-  const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
+  const [externalUsers, setExternalUsers] = useState<ExternalUser[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -1586,13 +1625,19 @@ export function Scheduler() {
     return () => unsubscribe();
   }, [selectedWorkspace]);
 
-  // Load sales users + data sources
+  // Load positions + external users once on mount
+  useEffect(() => {
+    positionService.getAll()
+      .then(setPositions)
+      .catch((err) => console.error('Error loading positions:', err));
+    externalUserService.getAll()
+      .then(setExternalUsers)
+      .catch((err) => console.error('Error loading external users:', err));
+  }, []);
+
+  // Load data sources per workspace
   useEffect(() => {
     if (!selectedWorkspace) return;
-    salesUserService
-      .getByWorkspace(selectedWorkspace.id)
-      .then(setSalesUsers)
-      .catch((err) => console.error('Error loading sales users:', err));
     dataSourceService
       .getByWorkspace(selectedWorkspace.id)
       .then(setDataSources)
@@ -1796,7 +1841,7 @@ export function Scheduler() {
               onSelectPreset={handleSelectPreset}
             />
           )}
-          {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} salesUsers={salesUsers} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
+          {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} externalUsers={externalUsers} positions={positions} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
           {currentStep === 2 && <StepSchedule campaign={formData} onChange={updateFormData} />}
           {currentStep === 3 && (
             <StepData

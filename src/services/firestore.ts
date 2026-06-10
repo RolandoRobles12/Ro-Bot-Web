@@ -26,6 +26,8 @@ import {
   HubSpotConnection,
   MessageRule,
   SalesUser,
+  Position,
+  ExternalUser,
   MetricaDesempeno,
   TarjetaTactica,
   SeguimientoTarjeta,
@@ -360,6 +362,43 @@ export const ruleService = {
 // ==========================================================================
 // =                     SALES COACHING SYSTEM SERVICES                     =
 // ==========================================================================
+
+// External users service
+// Lee la colección users del proyecto Firebase externo, filtrando activos.
+export const externalUserService = {
+  getAll: async (): Promise<ExternalUser[]> => {
+    const snap = await getDocs(
+      query(
+        collection(usersDb, 'users'),
+        where('status', '==', 'active'),
+        orderBy('fullName', 'asc')
+      )
+    );
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ExternalUser));
+  },
+  getByRole: async (role: string): Promise<ExternalUser[]> => {
+    const snap = await getDocs(
+      query(
+        collection(usersDb, 'users'),
+        where('status', '==', 'active'),
+        where('role', '==', role),
+        orderBy('fullName', 'asc')
+      )
+    );
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ExternalUser));
+  },
+};
+
+// Position catalog service
+// Lee posiciones del catálogo del proyecto Firebase externo.
+export const positionService = {
+  getAll: async (): Promise<Position[]> => {
+    const snap = await getDocs(collection(usersDb, 'catalog', 'positions', 'items'));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Position))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+};
 
 // Sales User services
 // Lee/escribe en usersDb (proyecto Firebase externo si está configurado)
