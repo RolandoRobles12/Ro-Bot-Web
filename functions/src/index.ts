@@ -185,6 +185,16 @@ interface SenderConfig {
   userName?: string;
 }
 
+interface MessageAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'video' | 'audio';
+  mimeType: string;
+  storageUrl: string;
+  storagePath: string;
+  size: number;
+}
+
 interface SendMessageData {
   workspaceId: string;
   content: string;
@@ -193,6 +203,7 @@ interface SendMessageData {
   sender: SenderConfig;
   templateId?: string;
   scheduledMessageId?: string;
+  attachments?: MessageAttachment[];
 }
 
 type CategoriaNombre = 'critico' | 'alerta' | 'preocupante' | 'rezagado' | 'en_linea' | 'destacado' | 'excepcional';
@@ -527,13 +538,39 @@ function replaceTemplateVariables(template: string, variables: Record<string, an
 }
 
 // ==========================================================================
+// =                    HELPER: UPLOAD ATTACHMENT TO SLACK                  =
+// ==========================================================================
+
+async function uploadAttachmentsToSlack(
+  slackClient: WebClient,
+  channel: string,
+  attachments: MessageAttachment[]
+): Promise<void> {
+  for (const attachment of attachments) {
+    try {
+      const response = await axios.get(attachment.storageUrl, { responseType: 'arraybuffer' });
+      const buffer = Buffer.from(response.data);
+      await (slackClient.files as any).uploadV2({
+        channel_id: channel,
+        file: buffer,
+        filename: attachment.name,
+        title: attachment.name,
+        length: buffer.length,
+      });
+    } catch (err) {
+      console.error(`Error uploading attachment ${attachment.name} to Slack:`, err);
+    }
+  }
+}
+
+// ==========================================================================
 // =                         SEND SLACK MESSAGE                             =
 // ==========================================================================
 
 export const sendSlackMessage = functions.https.onCall(
   async (data: SendMessageData, context) => {
     try {
-      const { workspaceId, content, blocks, recipients, sender, templateId, scheduledMessageId } = data;
+      const { workspaceId, content, blocks, recipients, sender, templateId, scheduledMessageId, attachments } = data;
       const { token } = await getSlackToken(workspaceId, sender);
       const slackClient = new WebClient(token);
 
@@ -559,6 +596,11 @@ export const sendSlackMessage = functions.https.onCall(
           }
 
           const result = await slackClient.chat.postMessage(messagePayload);
+
+          if (attachments && attachments.length > 0) {
+            await uploadAttachmentsToSlack(slackClient, channel, attachments);
+          }
+
           results.push({ recipient, success: true, result });
 
           const historyBase = {
@@ -729,6 +771,10 @@ export const processScheduledMessages = functions.pubsub
             }
 
             await slackClient.chat.postMessage(messagePayload);
+
+            if (message.attachments && message.attachments.length > 0) {
+              await uploadAttachmentsToSlack(slackClient, channel, message.attachments);
+            }
 
             await db.collection('message_history').add({
               workspaceId: message.workspaceId,

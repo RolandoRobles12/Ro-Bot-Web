@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Copy, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, FileText, Image } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { FileUpload } from '@/components/ui/FileUpload';
 import { useAppStore } from '@/store/appStore';
 import { useAuthStore } from '@/store/authStore';
 import { templateService } from '@/services/firestore';
-import { MessageTemplate } from '@/types';
+import { MessageTemplate, MessageAttachment } from '@/types';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -28,6 +29,7 @@ export function Templates() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
+  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<TemplateFormData>();
 
@@ -61,6 +63,7 @@ export function Templates() {
         content: data.content,
         variables,
         hubspotVariables,
+        attachments,
         category: data.category || 'general',
         isActive: true,
         createdBy: user.id,
@@ -78,6 +81,7 @@ export function Templates() {
 
       setShowModal(false);
       setEditingTemplate(null);
+      setAttachments([]);
       reset();
     } catch (error: any) {
       console.error('Error saving template:', error);
@@ -87,6 +91,7 @@ export function Templates() {
 
   const handleEdit = (template: MessageTemplate) => {
     setEditingTemplate(template);
+    setAttachments(template.attachments || []);
     reset({
       name: template.name,
       description: template.description || '',
@@ -154,6 +159,7 @@ export function Templates() {
           <Button
             onClick={() => {
               setEditingTemplate(null);
+              setAttachments([]);
               reset({ name: '', description: '', content: '', category: 'general' });
               setShowModal(true);
             }}
@@ -224,6 +230,15 @@ export function Templates() {
                 </div>
               )}
 
+              {template.attachments && template.attachments.length > 0 && (
+                <div className="flex items-center gap-1 mb-2">
+                  <Image className="w-3 h-3 text-gray-400" />
+                  <span className="text-xs text-gray-500">
+                    {template.attachments.length} archivo{template.attachments.length > 1 ? 's' : ''} adjunto{template.attachments.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
+
               <div className="text-xs text-gray-500 mb-3">
                 Creado {format(template.createdAt.toDate(), 'dd MMM, yyyy')}
               </div>
@@ -264,6 +279,7 @@ export function Templates() {
         onClose={() => {
           setShowModal(false);
           setEditingTemplate(null);
+          setAttachments([]);
           reset();
         }}
         title={editingTemplate ? 'Editar Plantilla' : 'Crear Plantilla'}
@@ -307,6 +323,17 @@ export function Templates() {
             </p>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Archivos Adjuntos (Opcional)
+            </label>
+            <FileUpload
+              workspaceId={selectedWorkspace.id}
+              value={attachments}
+              onChange={setAttachments}
+            />
+          </div>
+
           {detectedVariables.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm font-medium text-blue-900 mb-2">
@@ -332,6 +359,7 @@ export function Templates() {
               onClick={() => {
                 setShowModal(false);
                 setEditingTemplate(null);
+                setAttachments([]);
                 reset();
               }}
             >

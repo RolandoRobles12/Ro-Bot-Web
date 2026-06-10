@@ -58,6 +58,16 @@ export interface HubSpotVariable {
   example?: string;
 }
 
+export interface MessageAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'video' | 'audio';
+  mimeType: string;
+  storageUrl: string;
+  storagePath: string;
+  size: number;
+}
+
 export interface MessageTemplate {
   id: string;
   workspaceId: string;
@@ -67,6 +77,7 @@ export interface MessageTemplate {
   blocks?: SlackBlock[]; // Slack Block Kit format
   variables: string[]; // Extracted variables from content
   hubspotVariables: HubSpotVariable[];
+  attachments?: MessageAttachment[];
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -166,6 +177,7 @@ export interface ScheduledMessage {
     dealId?: string;
     variables?: Record<string, any>;
   };
+  attachments?: MessageAttachment[];
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

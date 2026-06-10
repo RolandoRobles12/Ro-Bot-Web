@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/Input';
 import { useAppStore } from '@/store/appStore';
 import { useAuthStore } from '@/store/authStore';
 import { templateService } from '@/services/firestore';
-import { MessageTemplate, MessageRecipient, SenderConfig } from '@/types';
-import { Send, User, Hash, Mail } from 'lucide-react';
+import { MessageTemplate, MessageRecipient, SenderConfig, MessageAttachment } from '@/types';
+import { Send, User, Hash, Mail, Image, Video, Music, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { httpsCallable } from 'firebase/functions';
@@ -116,6 +116,7 @@ export function SendMessage() {
         content: finalContent,
         recipients: [recipient],
         sender,
+        attachments: selectedTemplate?.attachments || [],
       });
 
       toast.success('Mensaje enviado exitosamente');
@@ -191,6 +192,14 @@ export function SendMessage() {
                 {template.description && (
                   <p className="text-xs text-gray-500 mt-1">{template.description}</p>
                 )}
+                {template.attachments && template.attachments.length > 0 && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Paperclip className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-400">
+                      {template.attachments.length} adjunto{template.attachments.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
               </button>
             ))}
             {templates.length === 0 && (
@@ -237,6 +246,30 @@ export function SendMessage() {
                     onChange={(e) => handleVariableChange(variable, e.target.value)}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Attachments preview */}
+            {selectedTemplate?.attachments && selectedTemplate.attachments.length > 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4" />
+                  Archivos adjuntos ({selectedTemplate.attachments.length})
+                </p>
+                <ul className="space-y-1">
+                  {selectedTemplate.attachments.map((a: MessageAttachment) => {
+                    const Icon = a.type === 'image' ? Image : a.type === 'video' ? Video : Music;
+                    return (
+                      <li key={a.id} className="flex items-center gap-2 text-sm text-gray-600">
+                        <Icon className="w-4 h-4 text-gray-400 shrink-0" />
+                        <span className="truncate">{a.name}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs text-gray-400">
+                  Estos archivos se enviarán junto con el mensaje
+                </p>
               </div>
             )}
 
