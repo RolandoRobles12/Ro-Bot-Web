@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { templateService } from '@/services/firestore';
 import { MessageTemplate, MessageRecipient, SenderConfig, MessageAttachment } from '@/types';
 import { Send, User, Hash, Mail, Image, Video, Music, Paperclip } from 'lucide-react';
+import { FileUpload } from '@/components/ui/FileUpload';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { httpsCallable } from 'firebase/functions';
@@ -29,6 +30,7 @@ export function SendMessage() {
   const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
   const [sending, setSending] = useState(false);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [extraAttachments, setExtraAttachments] = useState<MessageAttachment[]>([]);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<SendMessageFormData>({
     defaultValues: {
@@ -116,7 +118,7 @@ export function SendMessage() {
         content: finalContent,
         recipients: [recipient],
         sender,
-        attachments: selectedTemplate?.attachments || [],
+        attachments: [...(selectedTemplate?.attachments || []), ...extraAttachments],
       });
 
       toast.success('Mensaje enviado exitosamente');
@@ -124,6 +126,7 @@ export function SendMessage() {
       setValue('recipientValue', '');
       setSelectedTemplate(null);
       setVariableValues({});
+      setExtraAttachments([]);
     } catch (error: any) {
       console.error('Error sending message:', error);
       toast.error(error.message || 'Error al enviar el mensaje');
@@ -272,6 +275,19 @@ export function SendMessage() {
                 </p>
               </div>
             )}
+
+            {/* Extra attachments (file upload + recording) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Archivos Adjuntos
+              </label>
+              <FileUpload
+                workspaceId={selectedWorkspace.id}
+                value={extraAttachments}
+                onChange={setExtraAttachments}
+                disabled={sending}
+              />
+            </div>
 
             {/* Recipient Type */}
             <div>
