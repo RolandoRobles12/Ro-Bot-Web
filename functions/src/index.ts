@@ -486,24 +486,30 @@ export const sendSlackMessage = functions.https.onCall(
           const result = await slackClient.chat.postMessage(messagePayload);
           results.push({ recipient, success: true, result });
 
-          await db.collection('message_history').add({
-            workspaceId, scheduledMessageId, templateId, content, blocks,
+          const historyBase = {
+            workspaceId, content,
             recipients: [recipient], sender,
             sentAt: admin.firestore.Timestamp.now(),
             sentBy: context.auth?.uid || 'system',
-            status: 'sent', slackResponse: result,
-          });
+            ...(scheduledMessageId !== undefined && { scheduledMessageId }),
+            ...(templateId !== undefined && { templateId }),
+            ...(blocks !== undefined && { blocks }),
+          };
+          await db.collection('message_history').add({ ...historyBase, status: 'sent', slackResponse: result });
         } catch (error: any) {
           console.error('Error sending to recipient:', error);
           results.push({ recipient, success: false, error: error.message });
 
-          await db.collection('message_history').add({
-            workspaceId, scheduledMessageId, templateId, content, blocks,
+          const historyBase = {
+            workspaceId, content,
             recipients: [recipient], sender,
             sentAt: admin.firestore.Timestamp.now(),
             sentBy: context.auth?.uid || 'system',
-            status: 'failed', errorMessage: error.message,
-          });
+            ...(scheduledMessageId !== undefined && { scheduledMessageId }),
+            ...(templateId !== undefined && { templateId }),
+            ...(blocks !== undefined && { blocks }),
+          };
+          await db.collection('message_history').add({ ...historyBase, status: 'failed', errorMessage: error.message });
         }
       }
 
