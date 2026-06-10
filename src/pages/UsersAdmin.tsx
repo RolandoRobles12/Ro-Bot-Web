@@ -8,7 +8,7 @@ import {
   deleteDoc,
   Timestamp,
 } from 'firebase/firestore';
-import { usersDb } from '@/config/firebase';
+import { db } from '@/config/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { User, UserRole } from '@/types';
 import { Card } from '@/components/ui/Card';
@@ -75,8 +75,8 @@ export function UsersAdmin() {
     setLoadingData(true);
     try {
       const [usersSnap, invitesSnap] = await Promise.all([
-        getDocs(collection(usersDb, 'users')),
-        getDocs(collection(usersDb, 'invitations')),
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'invitations')),
       ]);
 
       const loadedUsers = usersSnap.docs.map(
@@ -126,7 +126,7 @@ export function UsersAdmin() {
 
     setSavingInvite(true);
     try {
-      await setDoc(doc(usersDb, 'invitations', email), {
+      await setDoc(doc(db, 'invitations', email), {
         role: inviteRole,
         createdAt: Timestamp.now(),
         createdBy: currentUser?.email ?? '',
@@ -146,7 +146,7 @@ export function UsersAdmin() {
   async function handleDeleteInvite(email: string) {
     setDeletingInvite(email);
     try {
-      await deleteDoc(doc(usersDb, 'invitations', email));
+      await deleteDoc(doc(db, 'invitations', email));
       toast.success('Invitación eliminada');
       setInvitations((prev) => prev.filter((i) => i.email !== email));
     } catch (err) {
@@ -159,7 +159,7 @@ export function UsersAdmin() {
   async function handleUpdateRole(userId: string, newRole: UserRole) {
     setUpdatingRole(userId);
     try {
-      await updateDoc(doc(usersDb, 'users', userId), { role: newRole });
+      await updateDoc(doc(db, 'users', userId), { role: newRole });
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       );

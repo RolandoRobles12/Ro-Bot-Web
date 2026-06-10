@@ -5,7 +5,7 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { auth, googleProvider, usersDb } from '@/config/firebase';
+import { auth, googleProvider, db } from '@/config/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { User } from '@/types';
 import { toast } from 'sonner';
@@ -35,7 +35,7 @@ export function useAuth() {
 
           // 2. Check invitation
           console.log('[Auth] Leyendo invitación para:', email);
-          const inviteDoc = await getDoc(doc(usersDb, 'invitations', email));
+          const inviteDoc = await getDoc(doc(db, 'invitations', email));
           console.log('[Auth] Invitación existe:', inviteDoc.exists());
           if (!inviteDoc.exists()) {
             await firebaseSignOut(auth);
@@ -47,14 +47,14 @@ export function useAuth() {
 
           // 3. Get or create user document
           console.log('[Auth] Leyendo usuario:', firebaseUser.uid);
-          const userDoc = await getDoc(doc(usersDb, 'users', firebaseUser.uid));
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           console.log('[Auth] Usuario existe:', userDoc.exists());
 
           if (userDoc.exists()) {
             const userData = { id: userDoc.id, ...userDoc.data() } as User;
             console.log('[Auth] Actualizando lastLogin...');
             await setDoc(
-              doc(usersDb, 'users', firebaseUser.uid),
+              doc(db, 'users', firebaseUser.uid),
               { lastLogin: Timestamp.now() },
               { merge: true }
             );
@@ -73,7 +73,7 @@ export function useAuth() {
             };
 
             console.log('[Auth] Creando usuario nuevo...');
-            await setDoc(doc(usersDb, 'users', firebaseUser.uid), newUser);
+            await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
             setUser({ id: firebaseUser.uid, ...newUser });
             toast.success('Sesión iniciada exitosamente');
           }
