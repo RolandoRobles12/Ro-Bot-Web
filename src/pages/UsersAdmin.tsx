@@ -11,7 +11,7 @@ import {
 import { usersDb } from '@/config/firebase';
 import { useAuthStore } from '@/store/authStore';
 import { User, UserRole } from '@/types';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -423,7 +423,7 @@ export function UsersAdmin() {
                         <Button
                           variant="danger"
                           size="sm"
-                          loading={deletingInvite === inv.email}
+                          isLoading={deletingInvite === inv.email}
                           onClick={() => handleDeleteInvite(inv.email)}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -487,7 +487,7 @@ export function UsersAdmin() {
             </Button>
             <Button
               variant="primary"
-              loading={savingInvite}
+              isLoading={savingInvite}
               onClick={handleCreateInvite}
             >
               <UserPlus className="w-4 h-4 mr-2" />
