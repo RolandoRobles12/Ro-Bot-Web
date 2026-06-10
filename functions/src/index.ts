@@ -1000,11 +1000,22 @@ export const processCampaigns = functions
   .runWith({ secrets: ['EXTERNAL_FIREBASE_PROJECT_ID'] })
   .pubsub
   .schedule('every 1 minutes')
+  .timeZone('America/Mexico_City')
   .onRun(async (_context) => {
     try {
       const now = new Date();
-      const currentDay = now.getDay(); // 0=Sunday
-      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      // Use Mexico City time for day/time comparison
+      const mxFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Mexico_City',
+        hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+      });
+      const parts = mxFormatter.formatToParts(now);
+      const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+      const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+      const weekday = parts.find((p) => p.type === 'weekday')?.value ?? 'Sun';
+      const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const currentDay = weekdayMap[weekday] ?? now.getDay();
+      const currentTime = `${hour}:${minute}`;
 
       // Get all active campaigns
       const campaignsSnapshot = await db
