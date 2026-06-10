@@ -34,9 +34,7 @@ export function useAuth() {
           }
 
           // 2. Check invitation
-          console.log('[Auth] Leyendo invitación para:', email);
           const inviteDoc = await getDoc(doc(db, 'invitations', email));
-          console.log('[Auth] Invitación existe:', inviteDoc.exists());
           if (!inviteDoc.exists()) {
             await firebaseSignOut(auth);
             toast.error('No tienes invitación para acceder. Contacta al administrador.');
@@ -46,13 +44,10 @@ export function useAuth() {
           }
 
           // 3. Get or create user document
-          console.log('[Auth] Leyendo usuario:', firebaseUser.uid);
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          console.log('[Auth] Usuario existe:', userDoc.exists());
 
           if (userDoc.exists()) {
             const userData = { id: userDoc.id, ...userDoc.data() } as User;
-            console.log('[Auth] Actualizando lastLogin...');
             await setDoc(
               doc(db, 'users', firebaseUser.uid),
               { lastLogin: Timestamp.now() },
@@ -72,13 +67,12 @@ export function useAuth() {
               lastLogin: Timestamp.now(),
             };
 
-            console.log('[Auth] Creando usuario nuevo...');
             await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
             setUser({ id: firebaseUser.uid, ...newUser });
             toast.success('Sesión iniciada exitosamente');
           }
         } catch (error: any) {
-          console.error('[Auth] Error en paso:', error);
+          console.error('Error al verificar acceso:', error);
           await firebaseSignOut(auth);
           toast.error('Error al verificar acceso. Revisa las reglas de Firestore.');
           setUser(null);
