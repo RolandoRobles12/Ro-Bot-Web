@@ -533,19 +533,14 @@ async function uploadAttachmentsToSlack(
   attachments: MessageAttachment[]
 ): Promise<void> {
   for (const attachment of attachments) {
-    try {
-      const response = await axios.get(attachment.storageUrl, { responseType: 'arraybuffer' });
-      const buffer = Buffer.from(response.data);
-      await (slackClient.files as any).uploadV2({
-        channel_id: channel,
-        file: buffer,
-        filename: attachment.name,
-        title: attachment.name,
-        length: buffer.length,
-      });
-    } catch (err) {
-      console.error(`Error uploading attachment ${attachment.name} to Slack:`, err);
-    }
+    const response = await axios.get(attachment.storageUrl, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(response.data);
+    await slackClient.files.upload({
+      channels: channel,
+      file: buffer,
+      filename: attachment.name,
+      title: attachment.name,
+    });
   }
 }
 
