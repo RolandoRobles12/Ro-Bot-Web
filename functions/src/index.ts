@@ -996,7 +996,9 @@ export const generateAIMessage = functions.https.onCall(
 // =                CAMPAIGN EXECUTION ENGINE                               =
 // ==========================================================================
 
-export const processCampaigns = functions.pubsub
+export const processCampaigns = functions
+  .runWith({ secrets: ['EXTERNAL_FIREBASE_PROJECT_ID'] })
+  .pubsub
   .schedule('every 1 minutes')
   .onRun(async (_context) => {
     try {
@@ -2077,7 +2079,9 @@ export const readGoogleSheet = functions.https.onCall(
 // =            MANUAL CAMPAIGN TRIGGER (FOR TESTING)                       =
 // ==========================================================================
 
-export const triggerCampaign = functions.https.onCall(
+export const triggerCampaign = functions
+  .runWith({ secrets: ['EXTERNAL_FIREBASE_PROJECT_ID'] })
+  .https.onCall(
   async (data: { campaignId: string }, _context) => {
     try {
       const { campaignId } = data;
