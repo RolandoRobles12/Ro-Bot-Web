@@ -38,9 +38,14 @@ export function Login() {
         </div>
 
         <div className="space-y-4">
-          <p className="text-sm text-gray-500 text-center">
-            Inicia sesión para gestionar tus notificaciones de Slack, crear plantillas y programar mensajes en múltiples espacios de trabajo.
-          </p>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-center">
+            <p className="text-sm font-medium text-amber-800">
+              Acceso restringido
+            </p>
+            <p className="text-xs text-amber-700 mt-1">
+              Solo cuentas <span className="font-semibold">@avivacredito.com</span> con invitación previa pueden ingresar.
+            </p>
+          </div>
 
           <Button
             onClick={signInWithGoogle}
@@ -70,7 +75,7 @@ export function Login() {
           </Button>
 
           <p className="text-xs text-gray-500 text-center">
-            Al iniciar sesión, aceptas nuestros Términos de Servicio y Política de Privacidad.
+            ¿No tienes acceso? Contacta al administrador para solicitar una invitación.
           </p>
         </div>
       </div>

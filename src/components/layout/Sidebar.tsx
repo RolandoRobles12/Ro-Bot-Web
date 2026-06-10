@@ -8,6 +8,7 @@ import {
   Settings,
   Zap,
   Users,
+  UserPlus,
   MessageSquare,
   CalendarClock,
   Database,
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'Reglas', href: '/rules', icon: Zap, roles: ['editor', 'admin'] },
   { name: 'Equipos', href: '/teams', icon: Users, roles: ['admin'] },
   { name: 'Workspaces', href: '/workspaces', icon: MessageSquare, roles: ['admin'] },
+  { name: 'Usuarios', href: '/users', icon: UserPlus, roles: ['admin'] },
   { name: 'Configuración', href: '/settings', icon: Settings, roles: ['viewer', 'editor', 'admin'] },
 ];
 

@@ -10,6 +10,8 @@ import { useAuthStore } from '@/store/authStore';
 import { User } from '@/types';
 import { toast } from 'sonner';
 
+const ALLOWED_DOMAIN = '@avivacredito.com';
+
 export function useAuth() {
   const { firebaseUser, user, loading, setFirebaseUser, setUser, setLoading } =
     useAuthStore();
@@ -19,11 +21,31 @@ export function useAuth() {
       setFirebaseUser(firebaseUser);
 
       if (firebaseUser) {
-        // Get or create user document
+        const email = firebaseUser.email || '';
+
+        // 1. Validate domain
+        if (!email.endsWith(ALLOWED_DOMAIN)) {
+          await firebaseSignOut(auth);
+          toast.error(`Solo se permite acceso con cuentas ${ALLOWED_DOMAIN}`);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        // 2. Check invitation
+        const inviteDoc = await getDoc(doc(usersDb, 'invitations', email));
+        if (!inviteDoc.exists()) {
+          await firebaseSignOut(auth);
+          toast.error('No tienes invitación para acceder. Contacta al administrador.');
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        // 3. Get or create user document
         const userDoc = await getDoc(doc(usersDb, 'users', firebaseUser.uid));
 
         if (userDoc.exists()) {
-          // Update last login
           const userData = { id: userDoc.id, ...userDoc.data() } as User;
           await setDoc(
             doc(usersDb, 'users', firebaseUser.uid),
@@ -31,19 +53,22 @@ export function useAuth() {
             { merge: true }
           );
           setUser(userData);
+          toast.success('Sesión iniciada exitosamente');
         } else {
-          // Create new user with default viewer role
+          // First login — create user with role from invitation
+          const inviteData = inviteDoc.data();
           const newUser: Omit<User, 'id'> = {
-            email: firebaseUser.email!,
-            displayName: firebaseUser.displayName || firebaseUser.email!,
+            email,
+            displayName: firebaseUser.displayName || email,
             photoURL: firebaseUser.photoURL || undefined,
-            role: 'viewer', // Default role, admin must upgrade
+            role: inviteData.role || 'viewer',
             createdAt: Timestamp.now(),
             lastLogin: Timestamp.now(),
           };
 
           await setDoc(doc(usersDb, 'users', firebaseUser.uid), newUser);
           setUser({ id: firebaseUser.uid, ...newUser });
+          toast.success('Sesión iniciada exitosamente');
         }
       } else {
         setUser(null);
@@ -58,7 +83,6 @@ export function useAuth() {
   const signInWithGoogle = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-      toast.success('Sesión iniciada exitosamente');
     } catch (error: any) {
       console.error('Error al iniciar sesión:', error);
       toast.error(error.message || 'Error al iniciar sesión');
