@@ -533,14 +533,46 @@ async function uploadAttachmentsToSlack(
   attachments: MessageAttachment[]
 ): Promise<void> {
   for (const attachment of attachments) {
-    const response = await axios.get(attachment.storageUrl, { responseType: 'arraybuffer' });
-    const buffer = Buffer.from(response.data);
-    await slackClient.files.upload({
-      channels: channel,
-      file: buffer,
-      filename: attachment.name,
-      title: attachment.name,
+    console.log(`Uploading attachment: ${attachment.name} (${attachment.mimeType}, ${attachment.size} bytes)`);
+
+    // 1. Download file from Firebase Storage
+    const dlResponse = await axios.get(attachment.storageUrl, {
+      responseType: 'arraybuffer',
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
     });
+    const buffer = Buffer.from(dlResponse.data);
+    console.log(`Downloaded ${attachment.name}: ${buffer.length} bytes`);
+
+    // 2. Request a pre-signed upload URL from Slack (v2 upload flow)
+    const urlResp = await slackClient.files.getUploadURLExternal({
+      filename: attachment.name,
+      length: buffer.length,
+    });
+
+    if (!urlResp.ok || !urlResp.upload_url || !urlResp.file_id) {
+      throw new Error(`Slack getUploadURLExternal failed: ${urlResp.error || 'unknown error'}`);
+    }
+    console.log(`Got Slack upload URL for ${attachment.name}, file_id: ${urlResp.file_id}`);
+
+    // 3. POST binary content to the pre-signed URL (no Authorization header needed)
+    await axios.post(urlResp.upload_url, buffer, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+    console.log(`Uploaded ${attachment.name} to Slack storage`);
+
+    // 4. Complete the upload and share to the channel
+    const completeResp = await slackClient.files.completeUploadExternal({
+      files: [{ id: urlResp.file_id, title: attachment.name }],
+      channel_id: channel,
+    });
+
+    if (!completeResp.ok) {
+      throw new Error(`Slack completeUploadExternal failed: ${completeResp.error || 'unknown error'}`);
+    }
+    console.log(`Successfully shared ${attachment.name} to channel ${channel}`);
   }
 }
 
@@ -579,6 +611,7 @@ export const sendSlackMessage = functions.https.onCall(
           const result = await slackClient.chat.postMessage(messagePayload);
 
           if (attachments && attachments.length > 0) {
+            console.log(`Sending ${attachments.length} attachment(s) to channel ${channel}`);
             await uploadAttachmentsToSlack(slackClient, channel, attachments);
           }
 
