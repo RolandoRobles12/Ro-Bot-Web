@@ -47,7 +47,7 @@ export async function getDocument<T>(
 ): Promise<T | null> {
   const docRef = doc(db, collectionName, docId);
   const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as T) : null;
+  return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;
 }
 
 export async function getDocuments<T>(
@@ -56,7 +56,7 @@ export async function getDocuments<T>(
 ): Promise<T[]> {
   const q = query(collection(db, collectionName), ...constraints);
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as T));
+  return snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id } as T));
 }
 
 export async function createDocument<T extends DocumentData>(
@@ -98,7 +98,7 @@ export function subscribeToDocument<T>(
   const docRef = doc(db, collectionName, docId);
   return onSnapshot(docRef, (snapshot) => {
     const data = snapshot.exists()
-      ? ({ id: snapshot.id, ...snapshot.data() } as T)
+      ? ({ ...snapshot.data(), id: snapshot.id } as T)
       : null;
     callback(data);
   });
@@ -111,7 +111,7 @@ export function subscribeToCollection<T>(
 ): Unsubscribe {
   const q = query(collection(db, collectionName), ...constraints);
   return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as T));
+    const data = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id } as T));
     callback(data);
   });
 }
@@ -125,7 +125,7 @@ async function getUserDocument<T>(
 ): Promise<T | null> {
   const docRef = doc(usersDb, collectionName, docId);
   const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as T) : null;
+  return docSnap.exists() ? ({ ...docSnap.data(), id: docSnap.id } as T) : null;
 }
 
 async function getUserDocuments<T>(
@@ -176,7 +176,7 @@ function subscribeToUserDocument<T>(
   const docRef = doc(usersDb, collectionName, docId);
   return onSnapshot(docRef, (snapshot) => {
     const data = snapshot.exists()
-      ? ({ id: snapshot.id, ...snapshot.data() } as T)
+      ? ({ ...snapshot.data(), id: snapshot.id } as T)
       : null;
     callback(data);
   });
