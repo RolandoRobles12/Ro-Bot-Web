@@ -174,11 +174,14 @@ export function FileUpload({ workspaceId, value, onChange, disabled }: FileUploa
   const uploadFile = async (file: File) => {
     setUploading({ name: file.name, pct: 0 });
     try {
+      console.log('[FileUpload] uploadFile start:', file.name, file.type, file.size);
       const attachment = await storageService.uploadAttachment(file, workspaceId, (pct) => {
         setUploading({ name: file.name, pct });
       });
+      console.log('[FileUpload] uploadFile success:', attachment);
       onChange([...value, attachment]);
     } catch (err: any) {
+      console.error('[FileUpload] uploadFile error:', err);
       toast.error(err.message || 'Error al subir el archivo');
     } finally {
       setUploading(null);
@@ -189,7 +192,9 @@ export function FileUpload({ workspaceId, value, onChange, disabled }: FileUploa
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    if (!getAttachmentType(file.type)) {
+    const detectedType = getAttachmentType(file.type);
+    console.log('[FileUpload] handleFiles:', file.name, file.type, '→ type:', detectedType);
+    if (!detectedType) {
       toast.error(`Tipo no soportado: ${file.type || file.name}`);
       return;
     }
