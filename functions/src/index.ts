@@ -613,12 +613,14 @@ export const sendSlackMessage = functions.https.onCall(
           }
 
           const result = await slackClient.chat.postMessage(messagePayload);
+          // Use the resolved channel ID from the response (handles #name → C0123456)
+          const resolvedChannel = (result.channel as string) || channel;
 
           let attachmentError: string | undefined;
           if (attachments && attachments.length > 0) {
-            console.log(`Sending ${attachments.length} attachment(s) to channel ${channel}`);
+            console.log(`Sending ${attachments.length} attachment(s) to channel ${resolvedChannel}`);
             try {
-              await uploadAttachmentsToSlack(token, channel, attachments);
+              await uploadAttachmentsToSlack(token, resolvedChannel, attachments);
             } catch (attachErr: any) {
               attachmentError = attachErr.message;
               console.error('Attachment upload failed:', attachErr.message);
@@ -794,10 +796,11 @@ export const processScheduledMessages = functions.pubsub
               messagePayload.blocks = message.blocks;
             }
 
-            await slackClient.chat.postMessage(messagePayload);
+            const scheduledResult = await slackClient.chat.postMessage(messagePayload);
+            const resolvedChannel = (scheduledResult.channel as string) || channel;
 
             if (message.attachments && message.attachments.length > 0) {
-              await uploadAttachmentsToSlack(token, channel, message.attachments);
+              await uploadAttachmentsToSlack(token, resolvedChannel, message.attachments);
             }
 
             await db.collection('message_history').add({
