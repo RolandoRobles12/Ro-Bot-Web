@@ -57,29 +57,80 @@ function getExternalDb(): admin.firestore.Firestore {
   return externalDb || db;
 }
 
-// Helper: obtener un usuario externo de aviva-hr por ID y mapearlo al formato interno
+// Lee el project ID del proyecto externo desde env/config
+function getExternalProjectId(): string | null {
+  return process.env.EXTERNAL_FIREBASE_PROJECT_ID ||
+    process.env.VITE_EXTERNAL_FIREBASE_PROJECT_ID ||
+    (functions.config().external?.project_id) ||
+    null;
+}
+
+// Parsea el formato de respuesta de la REST API de Firestore
+function parseFirestoreVal(val: any): any {
+  if ('stringValue' in val) return val.stringValue;
+  if ('integerValue' in val) return Number(val.integerValue);
+  if ('doubleValue' in val) return val.doubleValue;
+  if ('booleanValue' in val) return val.booleanValue;
+  if ('nullValue' in val) return null;
+  if ('arrayValue' in val) return (val.arrayValue?.values || []).map(parseFirestoreVal);
+  if ('mapValue' in val) return parseFirestoreDoc(val.mapValue?.fields || {});
+  if ('timestampValue' in val) return val.timestampValue;
+  return null;
+}
+
+function parseFirestoreDoc(fields: Record<string, any>): any {
+  const result: any = {};
+  for (const [key, val] of Object.entries(fields)) result[key] = parseFirestoreVal(val);
+  return result;
+}
+
+// Obtiene un usuario externo por ID usando la REST API pública de Firestore (no requiere service account)
 async function getExternalUserDoc(userId: string): Promise<any | null> {
+  const projectId = getExternalProjectId();
+  if (!projectId) return null;
   try {
-    const extDb = getExternalDb();
-    const snap = await extDb.collection('users').doc(userId).get();
-    if (!snap.exists) return null;
-    return mapExternalUser(snap.id, snap.data() as any);
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${userId}`;
+    const res = await axios.get(url);
+    if (!res.data?.fields) return null;
+    return mapExternalUser(userId, parseFirestoreDoc(res.data.fields));
   } catch (err) {
-    console.warn('Error fetching external user:', err);
+    console.warn('Error fetching external user via REST:', err);
     return null;
   }
 }
 
-// Helper: buscar usuarios externos por role (posición)
+// Consulta usuarios externos por role usando la REST API pública de Firestore
 async function queryExternalUsers(role?: string): Promise<any[]> {
+  const projectId = getExternalProjectId();
+  if (!projectId) return [];
   try {
-    const extDb = getExternalDb();
-    let q: any = extDb.collection('users').where('status', 'in', ['active', 'invited']);
-    if (role) q = q.where('role', '==', role);
-    const snap = await q.get();
-    return snap.docs.map((d: any) => mapExternalUser(d.id, d.data()));
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+    const statusFilter = {
+      fieldFilter: {
+        field: { fieldPath: 'status' },
+        op: 'IN',
+        value: { arrayValue: { values: [{ stringValue: 'active' }, { stringValue: 'invited' }] } },
+      },
+    };
+    const filters: any[] = [statusFilter];
+    if (role) {
+      filters.push({ fieldFilter: { field: { fieldPath: 'role' }, op: 'EQUAL', value: { stringValue: role } } });
+    }
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: 'users' }],
+        where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } },
+      },
+    };
+    const res = await axios.post(url, body);
+    return (res.data || [])
+      .filter((d: any) => d.document)
+      .map((d: any) => {
+        const id = d.document.name.split('/').pop();
+        return mapExternalUser(id, parseFirestoreDoc(d.document.fields));
+      });
   } catch (err) {
-    console.warn('Error querying external users:', err);
+    console.warn('Error querying external users via REST:', err);
     return [];
   }
 }

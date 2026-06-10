@@ -461,6 +461,7 @@ function StepRecipients({
 }) {
   const config = campaign.recipientConfig;
   const [channelSearch, setChannelSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
 
   const updateConfig = (updates: Partial<CampaignRecipientConfig>) => {
     onChange({ recipientConfig: { ...config, ...updates } });
@@ -589,26 +590,40 @@ function StepRecipients({
               No hay usuarios activos en el directorio externo.
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y">
-              {externalUsers.map((u) => {
-                const isSelected = config.specificUserIds?.includes(u.id) || false;
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => toggleSpecificUser(u.id)}
-                    className={`w-full flex items-center space-x-3 p-3 text-left transition-colors ${isSelected ? 'bg-slack-purple/5' : 'hover:bg-gray-50'}`}
-                  >
-                    <input type="checkbox" checked={isSelected} readOnly className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple" />
-                    <span className="text-sm">👤</span>
-                    <div>
-                      <div className="font-medium text-sm text-gray-900">{u.fullName}</div>
-                      <div className="text-xs text-gray-500">{u.role}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              <input
+                type="text"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Buscar por nombre o posición..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+              />
+              <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y">
+                {externalUsers
+                  .filter((u) => {
+                    const q = userSearch.toLowerCase();
+                    return !q || u.fullName.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+                  })
+                  .map((u) => {
+                    const isSelected = config.specificUserIds?.includes(u.id) || false;
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleSpecificUser(u.id)}
+                        className={`w-full flex items-center space-x-3 p-3 text-left transition-colors ${isSelected ? 'bg-slack-purple/5' : 'hover:bg-gray-50'}`}
+                      >
+                        <input type="checkbox" checked={isSelected} readOnly className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple" />
+                        <span className="text-sm">👤</span>
+                        <div>
+                          <div className="font-medium text-sm text-gray-900">{u.fullName}</div>
+                          <div className="text-xs text-gray-500">{u.role}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </>
           )}
           {config.specificUserIds && config.specificUserIds.length > 0 && (
             <p className="text-sm text-gray-600">{config.specificUserIds.length} vendedor(es) seleccionado(s)</p>
