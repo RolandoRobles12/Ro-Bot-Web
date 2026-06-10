@@ -57,14 +57,50 @@ function getExternalDb(): admin.firestore.Firestore {
   return externalDb || db;
 }
 
-// Helper: obtener sales_users desde el DB correcto (externo si está configurado)
-async function getSalesUserDoc(userId: string): Promise<admin.firestore.DocumentSnapshot> {
-  const salesDb = getExternalDb();
-  const doc = await salesDb.collection('sales_users').doc(userId).get();
-  if (!doc.exists && salesDb !== db) {
-    // Fallback al DB principal
-    return db.collection('sales_users').doc(userId).get();
+// Helper: obtener un usuario externo de aviva-hr por ID y mapearlo al formato interno
+async function getExternalUserDoc(userId: string): Promise<any | null> {
+  try {
+    const extDb = getExternalDb();
+    const snap = await extDb.collection('users').doc(userId).get();
+    if (!snap.exists) return null;
+    return mapExternalUser(snap.id, snap.data() as any);
+  } catch (err) {
+    console.warn('Error fetching external user:', err);
+    return null;
   }
+}
+
+// Helper: buscar usuarios externos por role (posición)
+async function queryExternalUsers(role?: string): Promise<any[]> {
+  try {
+    const extDb = getExternalDb();
+    let q: any = extDb.collection('users').where('status', 'in', ['active', 'invited']);
+    if (role) q = q.where('role', '==', role);
+    const snap = await q.get();
+    return snap.docs.map((d: any) => mapExternalUser(d.id, d.data()));
+  } catch (err) {
+    console.warn('Error querying external users:', err);
+    return [];
+  }
+}
+
+// Mapea campos de ExternalUser (aviva-hr) al formato interno que usa el motor de campañas
+function mapExternalUser(id: string, data: any): any {
+  return {
+    id,
+    nombre: data.fullName || `${data.first || ''} ${data.last || ''}`.trim(),
+    tipo: data.role || '',
+    slackUserId: data.slackOpsId || '',
+    slackChannel: data.slackOpsId || '',  // DMs en Slack usan el userId como channel
+    hubspotOwnerId: data.hubspot || '',
+    email: data.email || '',
+    isActive: true,
+  };
+}
+
+// Helper: obtener sales_users desde db principal (fallback para campañas legacy)
+async function getSalesUserDoc(userId: string): Promise<admin.firestore.DocumentSnapshot> {
+  const doc = await db.collection('sales_users').doc(userId).get();
   return doc;
 }
 
@@ -72,24 +108,12 @@ async function querySalesUsers(
   workspaceId: string,
   tipo?: string
 ): Promise<admin.firestore.QueryDocumentSnapshot[]> {
-  const salesDb = getExternalDb();
-  let q = salesDb
+  let q = db
     .collection('sales_users')
     .where('workspaceId', '==', workspaceId)
     .where('isActive', '==', true);
   if (tipo) q = q.where('tipo', '==', tipo) as any;
-
   const snapshot = await q.get();
-  if (snapshot.empty && salesDb !== db) {
-    // Fallback al DB principal
-    let fallbackQ = db
-      .collection('sales_users')
-      .where('workspaceId', '==', workspaceId)
-      .where('isActive', '==', true);
-    if (tipo) fallbackQ = fallbackQ.where('tipo', '==', tipo) as any;
-    const fallback = await fallbackQ.get();
-    return fallback.docs;
-  }
   return snapshot.docs;
 }
 
@@ -1388,6 +1412,13 @@ async function resolveRecipients(
     const types: string[] = recipientConfig.salesUserTypes || [];
     if (types.length === 0) return [];
 
+    // Intentar con usuarios externos (aviva-hr) primero
+    const externalUsers = await queryExternalUsers();
+    if (externalUsers.length > 0) {
+      return externalUsers.filter((u) => types.includes(u.tipo));
+    }
+
+    // Fallback: sales_users legacy del proyecto principal
     const allUsers: any[] = [];
     for (const tipo of types) {
       const docs = await querySalesUsers(workspaceId, tipo);
@@ -1400,6 +1431,13 @@ async function resolveRecipients(
     const userIds: string[] = recipientConfig.specificUserIds || [];
     const users: any[] = [];
     for (const userId of userIds) {
+      // Intentar con usuarios externos primero
+      const externalUser = await getExternalUserDoc(userId);
+      if (externalUser) {
+        users.push(externalUser);
+        continue;
+      }
+      // Fallback: sales_users legacy
       const userDoc = await getSalesUserDoc(userId);
       if (userDoc.exists) {
         users.push({ id: userDoc.id, ...userDoc.data() });

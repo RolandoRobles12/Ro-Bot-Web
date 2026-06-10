@@ -1772,10 +1772,11 @@ export function Scheduler() {
   const duplicateCampaign = async (campaign: MessageCampaign) => {
     if (!selectedWorkspace || !user) return;
     try {
+      const { id: _id, ...campaignData } = campaign;
       await campaignService.create({
-        ...campaign, name: `${campaign.name} (Copia)`, isActive: false, executionCount: 0,
+        ...campaignData, name: `${campaign.name} (Copia)`, isActive: false, executionCount: 0,
         createdBy: user.id || 'mock-user-id', createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
-      } as any);
+      });
       toast.success('Campaña duplicada');
     } catch { toast.error('Error al duplicar'); }
   };
