@@ -15,7 +15,6 @@ import {
   Sparkles,
   FileSpreadsheet,
   Globe,
-  HelpCircle,
   Plug,
   Eye,
   EyeOff,
@@ -149,7 +148,7 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<Tab>('pipelines');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [_dataSources, setDataSources] = useState<DataSource[]>([]);
   const [_settings, setSettings] = useState<WorkspaceSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -346,7 +345,7 @@ export function Settings() {
 
   // ==================== DATA SOURCE HANDLERS ====================
 
-  const openDataSourceModal = (ds?: DataSource) => {
+  const _openDataSourceModal = (ds?: DataSource) => {
     if (ds) {
       setEditingDataSource(ds);
       setDataSourceForm({
@@ -412,7 +411,7 @@ export function Settings() {
     }
   };
 
-  const deleteDataSource = async (dsId: string) => {
+  const _deleteDataSource = async (dsId: string) => {
     if (!confirm('¿Estás seguro de eliminar esta fuente de datos?')) return;
     try {
       await dataSourceService.delete(dsId);

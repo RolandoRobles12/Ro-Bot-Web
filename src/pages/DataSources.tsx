@@ -284,7 +284,6 @@ export function DataSources() {
   // ── Derived ──────────────────────────────────────────────────────────────
 
   const selectedPipeline = pipelines.find((p) => p.id === form.pipelineId);
-  const typeConfig = DATA_SOURCE_TYPES.find((t) => t.value === form.type);
 
   if (!selectedWorkspace) {
     return (
