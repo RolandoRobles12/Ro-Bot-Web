@@ -528,10 +528,12 @@ function replaceTemplateVariables(template: string, variables: Record<string, an
 // ==========================================================================
 
 async function uploadAttachmentsToSlack(
-  slackClient: WebClient,
+  token: string,
   channel: string,
   attachments: MessageAttachment[]
 ): Promise<void> {
+  const slackHeaders = { Authorization: `Bearer ${token}` };
+
   for (const attachment of attachments) {
     console.log(`Uploading attachment: ${attachment.name} (${attachment.mimeType}, ${attachment.size} bytes)`);
 
@@ -544,19 +546,20 @@ async function uploadAttachmentsToSlack(
     const buffer = Buffer.from(dlResponse.data);
     console.log(`Downloaded ${attachment.name}: ${buffer.length} bytes`);
 
-    // 2. Request a pre-signed upload URL from Slack (v2 upload flow)
-    const urlResp = await slackClient.files.getUploadURLExternal({
-      filename: attachment.name,
-      length: buffer.length,
-    });
-
-    if (!urlResp.ok || !urlResp.upload_url || !urlResp.file_id) {
-      throw new Error(`Slack getUploadURLExternal failed: ${urlResp.error || 'unknown error'}`);
+    // 2. Get a pre-signed upload URL from Slack (v2 upload flow — direct HTTP, no SDK method needed)
+    const urlResp = await axios.post(
+      'https://slack.com/api/files.getUploadURLExternal',
+      new URLSearchParams({ filename: attachment.name, length: String(buffer.length) }).toString(),
+      { headers: { ...slackHeaders, 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    if (!urlResp.data.ok) {
+      throw new Error(`Slack getUploadURLExternal failed: ${urlResp.data.error}`);
     }
-    console.log(`Got Slack upload URL for ${attachment.name}, file_id: ${urlResp.file_id}`);
+    const { upload_url, file_id } = urlResp.data;
+    console.log(`Got Slack upload URL for ${attachment.name}, file_id: ${file_id}`);
 
-    // 3. POST binary content to the pre-signed URL (no Authorization header needed)
-    await axios.post(urlResp.upload_url, buffer, {
+    // 3. POST binary content to the pre-signed URL
+    await axios.post(upload_url, buffer, {
       headers: { 'Content-Type': 'application/octet-stream' },
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
@@ -564,13 +567,13 @@ async function uploadAttachmentsToSlack(
     console.log(`Uploaded ${attachment.name} to Slack storage`);
 
     // 4. Complete the upload and share to the channel
-    const completeResp = await slackClient.files.completeUploadExternal({
-      files: [{ id: urlResp.file_id, title: attachment.name }],
-      channel_id: channel,
-    });
-
-    if (!completeResp.ok) {
-      throw new Error(`Slack completeUploadExternal failed: ${completeResp.error || 'unknown error'}`);
+    const completeResp = await axios.post(
+      'https://slack.com/api/files.completeUploadExternal',
+      { files: [{ id: file_id, title: attachment.name }], channel_id: channel },
+      { headers: { ...slackHeaders, 'Content-Type': 'application/json' } }
+    );
+    if (!completeResp.data.ok) {
+      throw new Error(`Slack completeUploadExternal failed: ${completeResp.data.error}`);
     }
     console.log(`Successfully shared ${attachment.name} to channel ${channel}`);
   }
@@ -612,7 +615,7 @@ export const sendSlackMessage = functions.https.onCall(
 
           if (attachments && attachments.length > 0) {
             console.log(`Sending ${attachments.length} attachment(s) to channel ${channel}`);
-            await uploadAttachmentsToSlack(slackClient, channel, attachments);
+            await uploadAttachmentsToSlack(token, channel, attachments);
           }
 
           results.push({ recipient, success: true, result });
@@ -787,7 +790,7 @@ export const processScheduledMessages = functions.pubsub
             await slackClient.chat.postMessage(messagePayload);
 
             if (message.attachments && message.attachments.length > 0) {
-              await uploadAttachmentsToSlack(slackClient, channel, message.attachments);
+              await uploadAttachmentsToSlack(token, channel, message.attachments);
             }
 
             await db.collection('message_history').add({
