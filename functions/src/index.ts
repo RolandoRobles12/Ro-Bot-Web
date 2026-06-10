@@ -1918,7 +1918,7 @@ export const handleSlackInteraction = functions.https.onRequest(
                 await slackProgressClient.chat.postMessage({
                   channel,
                   text: `📊 Progreso del día - ${su.nombre}`,
-                  blocks: [
+                  blocks: ([
                     { type: 'header', text: { type: 'plain_text', text: `📊 PROGRESO DIARIO - ${(su.nombre || '').toUpperCase()}` } },
                     {
                       type: 'section',
@@ -1940,7 +1940,7 @@ export const handleSlackInteraction = functions.https.onRequest(
                       text: { type: 'mrkdwn', text: '*🎯 ¡Todas las tarjetas del día completadas!*' },
                     }]),
                     { type: 'context', elements: [{ type: 'mrkdwn', text: `⚡ El Rayo: máxima conversión 20-25% | 📅 ${new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' })}` }] },
-                  ],
+                  ] as any[]),
                 });
                 responseToken = null; // ya enviamos la respuesta
               } else {
