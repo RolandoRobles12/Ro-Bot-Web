@@ -614,12 +614,18 @@ export const sendSlackMessage = functions.https.onCall(
 
           const result = await slackClient.chat.postMessage(messagePayload);
 
+          let attachmentError: string | undefined;
           if (attachments && attachments.length > 0) {
             console.log(`Sending ${attachments.length} attachment(s) to channel ${channel}`);
-            await uploadAttachmentsToSlack(token, channel, attachments);
+            try {
+              await uploadAttachmentsToSlack(token, channel, attachments);
+            } catch (attachErr: any) {
+              attachmentError = attachErr.message;
+              console.error('Attachment upload failed:', attachErr.message);
+            }
           }
 
-          results.push({ recipient, success: true, result });
+          results.push({ recipient, success: true, result, attachmentError });
 
           const historyBase = {
             workspaceId, content,
