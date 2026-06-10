@@ -40,7 +40,7 @@ import { useAuthStore } from '@/store/authStore';
 import {
   campaignService,
   campaignExecutionService,
-  salesUserService,
+  externalUserService,
   dataSourceService,
   positionService,
 } from '@/services/firestore';
@@ -55,7 +55,7 @@ import type {
   RecipientSourceType,
   SalesUserType,
   CategoriaDesempeno,
-  SalesUser,
+  ExternalUser,
   DataSource,
   Position,
 } from '@/types';
@@ -443,7 +443,7 @@ function StepBasics({
 function StepRecipients({
   campaign,
   onChange,
-  salesUsers,
+  externalUsers,
   positions,
   slackChannels,
   slackUsers: _slackUsers,
@@ -452,7 +452,7 @@ function StepRecipients({
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
-  salesUsers: SalesUser[];
+  externalUsers: ExternalUser[];
   positions: Position[];
   slackChannels: SlackChannel[];
   slackUsers: SlackUser[];
@@ -500,7 +500,7 @@ function StepRecipients({
 
   const userCounts: Record<string, number> = {};
   for (const pos of positions) {
-    userCounts[pos.name] = salesUsers.filter((u) => u.tipo === pos.name).length;
+    userCounts[pos.name] = externalUsers.filter((u) => u.role === pos.name).length;
   }
 
   const filteredChannels = slackChannels.filter(
@@ -584,13 +584,13 @@ function StepRecipients({
       {config.sourceType === 'specific_users' && (
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">Seleccionar vendedores</label>
-          {salesUsers.length === 0 ? (
+          {externalUsers.length === 0 ? (
             <div className="bg-yellow-50 rounded-lg p-4 text-sm text-yellow-800">
-              No hay vendedores registrados. Agrega vendedores desde la sección de Equipos.
+              No hay usuarios activos en el directorio externo.
             </div>
           ) : (
             <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y">
-              {salesUsers.map((u) => {
+              {externalUsers.map((u) => {
                 const isSelected = config.specificUserIds?.includes(u.id) || false;
                 return (
                   <button
@@ -602,8 +602,8 @@ function StepRecipients({
                     <input type="checkbox" checked={isSelected} readOnly className="rounded border-gray-300 text-slack-purple focus:ring-slack-purple" />
                     <span className="text-sm">👤</span>
                     <div>
-                      <div className="font-medium text-sm text-gray-900">{u.nombre}</div>
-                      <div className="text-xs text-gray-500">{u.tipo}</div>
+                      <div className="font-medium text-sm text-gray-900">{u.fullName}</div>
+                      <div className="text-xs text-gray-500">{u.role}</div>
                     </div>
                   </button>
                 );
@@ -1555,7 +1555,7 @@ export function Scheduler() {
   const { user } = useAuthStore();
 
   const [campaigns, setCampaigns] = useState<MessageCampaign[]>([]);
-  const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
+  const [externalUsers, setExternalUsers] = useState<ExternalUser[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1588,20 +1588,19 @@ export function Scheduler() {
     return () => unsubscribe();
   }, [selectedWorkspace]);
 
-  // Load positions catalog once on mount
+  // Load positions + external users once on mount
   useEffect(() => {
     positionService.getAll()
       .then(setPositions)
       .catch((err) => console.error('Error loading positions:', err));
+    externalUserService.getAll()
+      .then(setExternalUsers)
+      .catch((err) => console.error('Error loading external users:', err));
   }, []);
 
-  // Load sales users + data sources
+  // Load data sources per workspace
   useEffect(() => {
     if (!selectedWorkspace) return;
-    salesUserService
-      .getByWorkspace(selectedWorkspace.id)
-      .then(setSalesUsers)
-      .catch((err) => console.error('Error loading sales users:', err));
     dataSourceService
       .getByWorkspace(selectedWorkspace.id)
       .then(setDataSources)
@@ -1805,7 +1804,7 @@ export function Scheduler() {
               onSelectPreset={handleSelectPreset}
             />
           )}
-          {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} salesUsers={salesUsers} positions={positions} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
+          {currentStep === 1 && <StepRecipients campaign={formData} onChange={updateFormData} externalUsers={externalUsers} positions={positions} slackChannels={slackChannels} slackUsers={slackUsers} loadingSlack={loadingSlack} onRefreshSlack={fetchSlackData} />}
           {currentStep === 2 && <StepSchedule campaign={formData} onChange={updateFormData} />}
           {currentStep === 3 && (
             <StepData

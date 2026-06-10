@@ -27,6 +27,7 @@ import {
   MessageRule,
   SalesUser,
   Position,
+  ExternalUser,
   MetricaDesempeno,
   TarjetaTactica,
   SeguimientoTarjeta,
@@ -361,6 +362,32 @@ export const ruleService = {
 // ==========================================================================
 // =                     SALES COACHING SYSTEM SERVICES                     =
 // ==========================================================================
+
+// External users service
+// Lee la colección users del proyecto Firebase externo, filtrando activos.
+export const externalUserService = {
+  getAll: async (): Promise<ExternalUser[]> => {
+    const snap = await getDocs(
+      query(
+        collection(usersDb, 'users'),
+        where('status', '==', 'active'),
+        orderBy('fullName', 'asc')
+      )
+    );
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ExternalUser));
+  },
+  getByRole: async (role: string): Promise<ExternalUser[]> => {
+    const snap = await getDocs(
+      query(
+        collection(usersDb, 'users'),
+        where('status', '==', 'active'),
+        where('role', '==', role),
+        orderBy('fullName', 'asc')
+      )
+    );
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ExternalUser));
+  },
+};
 
 // Position catalog service
 // Lee posiciones del catálogo del proyecto Firebase externo.

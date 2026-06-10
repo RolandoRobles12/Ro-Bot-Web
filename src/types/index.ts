@@ -413,6 +413,22 @@ export interface Position {
   productId: string;
 }
 
+export interface ExternalUser {
+  id: string;
+  fullName: string;
+  first: string;
+  last: string;
+  email: string;
+  role: string;
+  area: string;
+  region: string;
+  quiosco: string;
+  slackOpsId: string;
+  hubspot: string;
+  status: string;
+  managerName: string;
+}
+
 export type CategoriaDesempeno =
   | 'critico'      // 0 - Desempeño crítico, requiere intervención inmediata
   | 'alerta'       // 1 - Alerta, muy por debajo del objetivo
