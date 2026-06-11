@@ -675,6 +675,7 @@ export interface MessageCampaign {
   // Message
   messageVariants: MessageVariant[];
   mentionUser?: boolean;              // Mention user with @ in Slack
+  attachments?: MessageAttachment[];  // Media files sent with every message
 
   // AI (optional)
   aiConfig?: CampaignAIConfig;

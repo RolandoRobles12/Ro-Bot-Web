@@ -58,7 +58,9 @@ import type {
   ExternalUser,
   DataSource,
   Position,
+  MessageAttachment,
 } from '@/types';
+import { FileUpload } from '@/components/ui/FileUpload';
 
 // ==========================================================================
 // Constants
@@ -1114,9 +1116,11 @@ function StepData({
 function StepMessage({
   campaign,
   onChange,
+  workspaceId,
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
+  workspaceId: string;
 }) {
   const variants = campaign.messageVariants;
   const slots = campaign.scheduleSlots || [];
@@ -1365,6 +1369,18 @@ function StepMessage({
         )
       )}
 
+      {/* Attachments */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Archivos adjuntos (se envían en todos los mensajes de esta campaña)
+        </label>
+        <FileUpload
+          workspaceId={workspaceId}
+          value={campaign.attachments || []}
+          onChange={(attachments) => onChange({ attachments })}
+        />
+      </div>
+
       {/* AI Configuration (collapsible) */}
       <div className="border border-gray-200 rounded-lg overflow-hidden">
         <button
@@ -1532,6 +1548,11 @@ function StepReview({
           <p className="text-sm text-gray-600 mt-2">
             IA: {campaign.aiConfig?.enabled ? `Activada (${campaign.aiConfig.rewriteMode === 'rewrite' ? 'reescribir' : 'generar'})` : 'Desactivada'}
           </p>
+          {campaign.attachments && campaign.attachments.length > 0 && (
+            <p className="text-sm text-gray-600 mt-1">
+              Adjuntos: {campaign.attachments.length} archivo(s)
+            </p>
+          )}
         </div>
 
         {warnings.length > 0 && (
@@ -1866,7 +1887,7 @@ export function Scheduler() {
               onGoToDataSources={() => navigate('/data-sources')}
             />
           )}
-          {currentStep === 4 && <StepMessage campaign={formData} onChange={updateFormData} />}
+          {currentStep === 4 && <StepMessage campaign={formData} onChange={updateFormData} workspaceId={selectedWorkspace?.id || ''} />}
           {currentStep === 5 && <StepReview campaign={formData} externalUsers={externalUsers} />}
         </Card>
 

@@ -1327,11 +1327,16 @@ async function executeCampaign(
       // 5g. Prefix with bold name
       const displayMessage = `*${recipient.nombre}* - ${finalMessage}`;
 
-      // 5h. Send message
-      await slackClient.chat.postMessage({
-        channel: recipient.slackChannel,
-        text: displayMessage,
-      });
+      // 5h. Send message (with attachments if any)
+      if (campaign.attachments && campaign.attachments.length > 0) {
+        const resolvedChannelId = await resolveChannelId(slackClient, recipient.slackChannel);
+        await uploadAttachmentsToSlack(token, resolvedChannelId, campaign.attachments, displayMessage);
+      } else {
+        await slackClient.chat.postMessage({
+          channel: recipient.slackChannel,
+          text: displayMessage,
+        });
+      }
 
       executionDetails.push({
         userId: recipient.id,
