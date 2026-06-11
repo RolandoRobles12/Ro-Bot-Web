@@ -580,9 +580,17 @@ async function uploadAttachmentsToSlack(
     console.log(`Downloaded ${attachment.name}: ${buffer.length} bytes`);
 
     // 2. Get a pre-signed upload URL from Slack (v2 upload flow)
+    // For audio files stored as .webm (Chrome's only option), rename to .ogg so Slack
+    // displays them with an audio player instead of a video player. The Opus codec is
+    // identical in both containers, so playback works fine.
+    let slackFilename = attachment.name;
+    if (attachment.type === 'audio' && /\.webm$/i.test(slackFilename)) {
+      slackFilename = slackFilename.replace(/\.webm$/i, '.ogg');
+    }
+
     const urlResp = await axios.post(
       'https://slack.com/api/files.getUploadURLExternal',
-      new URLSearchParams({ filename: attachment.name, length: String(buffer.length) }).toString(),
+      new URLSearchParams({ filename: slackFilename, length: String(buffer.length) }).toString(),
       { headers: { ...slackHeaders, 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
     if (!urlResp.data.ok) {
@@ -598,7 +606,7 @@ async function uploadAttachmentsToSlack(
     });
     console.log(`Uploaded ${attachment.name} to Slack storage`);
 
-    fileIds.push({ id: file_id, title: attachment.name });
+    fileIds.push({ id: file_id, title: slackFilename });
   }
 
   // 4. Complete ALL uploads in a single call so they arrive as one message
