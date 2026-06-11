@@ -1327,15 +1327,17 @@ async function executeCampaign(
       // 5g. Prefix with bold name
       const displayMessage = `*${recipient.nombre}* - ${finalMessage}`;
 
-      // 5h. Send message (with attachments if any)
+      // 5h. Send text message first (always), then attach files separately.
+      // Using initial_comment in completeUploadExternal is unreliable for DMs,
+      // so we guarantee text delivery with chat.postMessage and use the resolved
+      // channel ID it returns for the subsequent file upload.
+      const msgResult = await slackClient.chat.postMessage({
+        channel: recipient.slackChannel,
+        text: displayMessage,
+      });
       if (campaign.attachments && campaign.attachments.length > 0) {
-        const resolvedChannelId = await resolveChannelId(slackClient, recipient.slackChannel);
-        await uploadAttachmentsToSlack(token, resolvedChannelId, campaign.attachments, displayMessage);
-      } else {
-        await slackClient.chat.postMessage({
-          channel: recipient.slackChannel,
-          text: displayMessage,
-        });
+        const resolvedChannelId = (msgResult.channel as string) || recipient.slackChannel;
+        await uploadAttachmentsToSlack(token, resolvedChannelId, campaign.attachments);
       }
 
       executionDetails.push({
