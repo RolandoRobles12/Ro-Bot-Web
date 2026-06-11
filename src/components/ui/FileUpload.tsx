@@ -31,7 +31,8 @@ function formatTime(seconds: number): string {
 
 function getBestMimeType(type: 'audio' | 'video'): string {
   if (type === 'audio') {
-    for (const mime of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']) {
+    // Prefer formats Slack recognizes as audio; webm is last resort (Slack shows it as video)
+    for (const mime of ['audio/ogg;codecs=opus', 'audio/mp4', 'audio/ogg', 'audio/webm;codecs=opus', 'audio/webm']) {
       if (MediaRecorder.isTypeSupported(mime)) return mime;
     }
     return 'audio/webm';
@@ -43,9 +44,11 @@ function getBestMimeType(type: 'audio' | 'video'): string {
 }
 
 function mimeToExt(mime: string): string {
-  if (mime.startsWith('audio/webm') || mime.startsWith('video/webm')) return 'webm';
-  if (mime.startsWith('audio/mp4') || mime.startsWith('video/mp4')) return 'mp4';
   if (mime.startsWith('audio/ogg')) return 'ogg';
+  if (mime.startsWith('audio/mp4')) return 'm4a';
+  if (mime.startsWith('audio/webm')) return 'webm';
+  if (mime.startsWith('video/mp4')) return 'mp4';
+  if (mime.startsWith('video/webm')) return 'webm';
   return 'webm';
 }
 
