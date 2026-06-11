@@ -58,7 +58,6 @@ import type {
   ExternalUser,
   DataSource,
   Position,
-  MessageAttachment,
 } from '@/types';
 import { FileUpload } from '@/components/ui/FileUpload';
 
