@@ -1754,6 +1754,7 @@ export function Scheduler() {
       dataConfig: campaign.dataConfig,
       isActive: campaign.isActive,
       executionCount: campaign.executionCount,
+      attachments: campaign.attachments || [],
     });
     setCurrentStep(0);
     setView('form');
