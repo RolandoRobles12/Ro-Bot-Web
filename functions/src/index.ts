@@ -837,8 +837,9 @@ export const processScheduledMessages = functions.pubsub
             const channel = recipient.id || recipient.name;
 
             if (message.attachments && message.attachments.length > 0) {
-              const resolvedChannelId = await resolveChannelId(slackClient, channel);
-              await uploadAttachmentsToSlack(token, resolvedChannelId, message.attachments, message.content);
+              const scheduledMsg = await slackClient.chat.postMessage({ channel, text: message.content });
+              const resolvedChannelId = (scheduledMsg.channel as string) || channel;
+              await uploadAttachmentsToSlack(token, resolvedChannelId, message.attachments);
             } else {
               const messagePayload: any = { channel, text: message.content };
               if (message.blocks && message.blocks.length > 0) {
