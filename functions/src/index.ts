@@ -527,35 +527,6 @@ function replaceTemplateVariables(template: string, variables: Record<string, an
 // =                    HELPER: UPLOAD ATTACHMENT TO SLACK                  =
 // ==========================================================================
 
-// Resolves any channel reference to a real Slack channel ID.
-// chat.postMessage accepts names/user IDs, but files.completeUploadExternal requires an actual ID.
-async function resolveChannelId(slackClient: WebClient, channel: string): Promise<string> {
-  // Already a proper channel/DM/group ID
-  if (/^[CDGW][A-Z0-9]+$/i.test(channel)) return channel;
-
-  // Slack user ID → open DM to get the DM channel ID
-  if (/^U[A-Z0-9]+$/i.test(channel)) {
-    const dm = await slackClient.conversations.open({ users: channel });
-    return (dm.channel as any)?.id || channel;
-  }
-
-  // Channel name (with or without #) → look up in conversations list
-  const name = channel.startsWith('#') ? channel.slice(1) : channel;
-  let cursor: string | undefined;
-  do {
-    const list: any = await slackClient.conversations.list({
-      types: 'public_channel,private_channel',
-      limit: 200,
-      cursor,
-    });
-    const found = list.channels?.find((c: any) => c.name === name);
-    if (found?.id) return found.id;
-    cursor = list.response_metadata?.next_cursor;
-  } while (cursor);
-
-  return channel;
-}
-
 // Uploads all attachments to Slack and shares them to channelId.
 async function uploadAttachmentsToSlack(
   token: string,
