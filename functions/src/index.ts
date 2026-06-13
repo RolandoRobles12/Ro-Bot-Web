@@ -1231,8 +1231,15 @@ async function executeCampaign(
       // 5a. Fetch metrics for this recipient
       const metrics = await fetchRecipientMetrics(recipient, campaign.dataConfig, accessToken);
 
-      // 5b. Select message variant
-      const selectedVariant = selectMessageVariant(campaign.messageVariants, metrics);
+      // 5b. Select message variant — prefer slot-specific variants, fall back to global
+      const slotVariants = (campaign.messageVariants || []).filter(
+        (v: any) => v.scheduleSlotId === scheduleSlot.id
+      );
+      const globalVariants = (campaign.messageVariants || []).filter(
+        (v: any) => !v.scheduleSlotId
+      );
+      const variantsToUse = slotVariants.length > 0 ? slotVariants : globalVariants;
+      const selectedVariant = selectMessageVariant(variantsToUse, metrics);
       if (!selectedVariant) {
         console.warn(`No matching variant for ${recipient.nombre}`);
         continue;
