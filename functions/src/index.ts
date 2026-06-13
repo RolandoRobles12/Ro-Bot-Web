@@ -556,13 +556,11 @@ async function resolveChannelId(slackClient: WebClient, channel: string): Promis
   return channel;
 }
 
-// Uploads all attachments to Slack and posts them as a single message.
-// If initialComment is provided it becomes the message text (avoids a separate chat.postMessage).
+// Uploads all attachments to Slack and shares them to channelId.
 async function uploadAttachmentsToSlack(
   token: string,
   channelId: string,
-  attachments: MessageAttachment[],
-  initialComment?: string
+  attachments: MessageAttachment[]
 ): Promise<void> {
   const slackHeaders = { Authorization: `Bearer ${token}` };
   const fileIds: { id: string; title: string }[] = [];
@@ -609,9 +607,8 @@ async function uploadAttachmentsToSlack(
     fileIds.push({ id: file_id, title: slackFilename });
   }
 
-  // 4. Complete ALL uploads in a single call so they arrive as one message
+  // 4. Complete ALL uploads in a single call
   const completeBody: any = { files: fileIds, channel_id: channelId };
-  if (initialComment) completeBody.initial_comment = initialComment;
 
   const completeResp = await axios.post(
     'https://slack.com/api/files.completeUploadExternal',
@@ -655,28 +652,23 @@ export const sendSlackMessage = functions.https.onCall(
           let result: any;
           let attachmentError: string | undefined;
 
+          // Always send text first with chat.postMessage — initial_comment in
+          // files.completeUploadExternal is silently ignored for DMs on some clients.
+          const messagePayload: any = { channel, text: content };
+          if (blocks && blocks.length > 0) {
+            messagePayload.blocks = blocks;
+          }
+          result = await slackClient.chat.postMessage(messagePayload);
+
           if (attachments && attachments.length > 0) {
-            // When there are attachments, use files.completeUploadExternal with initial_comment
-            // so text + files arrive as ONE message (not two separate ones).
-            const resolvedChannelId = await resolveChannelId(slackClient, channel);
-            console.log(`Sending ${attachments.length} attachment(s) with text to channel ${resolvedChannelId}`);
+            const resolvedChannelId = (result.channel as string) || channel;
+            console.log(`Sending ${attachments.length} attachment(s) to channel ${resolvedChannelId}`);
             try {
-              await uploadAttachmentsToSlack(token, resolvedChannelId, attachments, content);
-              result = { ok: true, channel: resolvedChannelId };
+              await uploadAttachmentsToSlack(token, resolvedChannelId, attachments);
             } catch (attachErr: any) {
               attachmentError = attachErr.message;
               console.error('Attachment upload failed:', attachErr.message);
-              // Fall back to sending text only
-              const msgPayload: any = { channel, text: content };
-              if (blocks && blocks.length > 0) msgPayload.blocks = blocks;
-              result = await slackClient.chat.postMessage(msgPayload);
             }
-          } else {
-            const messagePayload: any = { channel, text: content };
-            if (blocks && blocks.length > 0) {
-              messagePayload.blocks = blocks;
-            }
-            result = await slackClient.chat.postMessage(messagePayload);
           }
 
           results.push({ recipient, success: true, result, attachmentError });
