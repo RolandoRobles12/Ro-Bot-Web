@@ -719,13 +719,23 @@ export function DataSources() {
                                 {catalogProp?.type === 'enum' && catalogProp.enumOptions?.length ? (
                                   <select
                                     value={f.value}
-                                    onChange={(e) => updateFilter(i, { value: e.target.value })}
+                                    onChange={(e) => {
+                                      const selectedOpt = (catalogProp.enumOptions as any[]).find((o: any) =>
+                                        (typeof o === 'string' ? o : o.value) === e.target.value
+                                      );
+                                      updateFilter(i, {
+                                        value: e.target.value,
+                                        displayValue: selectedOpt && typeof selectedOpt !== 'string' ? selectedOpt.label : e.target.value,
+                                      });
+                                    }}
                                     className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
                                   >
                                     <option value="">— Seleccionar valor —</option>
-                                    {catalogProp.enumOptions.map(opt => (
-                                      <option key={opt} value={opt}>{opt}</option>
-                                    ))}
+                                    {(catalogProp.enumOptions as any[]).map((opt: any) => {
+                                      const val = typeof opt === 'string' ? opt : opt.value;
+                                      const lbl = typeof opt === 'string' ? opt : opt.label;
+                                      return <option key={val} value={val}>{lbl}</option>;
+                                    })}
                                   </select>
                                 ) : (
                                   <input
@@ -746,7 +756,7 @@ export function DataSources() {
                                 <code className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded font-mono">
                                   {`{{${f.propertyName}}}`}
                                 </code>
-                                <span>= "{f.value}"</span>
+                                <span>= "{(f as any).displayValue || f.value}"</span>
                                 {catalogProp && <span className="text-gray-400">· {catalogProp.label}</span>}
                               </div>
                             )}

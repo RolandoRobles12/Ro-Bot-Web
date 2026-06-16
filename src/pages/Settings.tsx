@@ -493,13 +493,16 @@ export function Settings() {
     }
   };
 
-  const addEnumOption = (val: string) => {
-    if (!val.trim() || (propForm.enumOptions || []).includes(val.trim())) return;
-    setPropForm(p => ({ ...p, enumOptions: [...(p.enumOptions || []), val.trim()] }));
+  const addEnumOption = (value: string, label: string) => {
+    const trimmedValue = value.trim();
+    const trimmedLabel = label.trim();
+    if (!trimmedValue || !trimmedLabel) return;
+    if ((propForm.enumOptions || []).some((o: any) => o.value === trimmedValue)) return;
+    setPropForm(p => ({ ...p, enumOptions: [...(p.enumOptions || []), { value: trimmedValue, label: trimmedLabel }] }));
   };
 
-  const removeEnumOption = (opt: string) => {
-    setPropForm(p => ({ ...p, enumOptions: (p.enumOptions || []).filter(o => o !== opt) }));
+  const removeEnumOption = (value: string) => {
+    setPropForm(p => ({ ...p, enumOptions: (p.enumOptions || []).filter((o: any) => o.value !== value) }));
   };
 
   // ==================== SETTINGS HANDLERS ====================
@@ -756,8 +759,14 @@ export function Settings() {
                         <td className="px-4 py-3">
                           {prop.type === 'enum' && prop.enumOptions?.length ? (
                             <div className="flex flex-wrap gap-1">
-                              {prop.enumOptions.map(opt => (
-                                <span key={opt} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">{opt}</span>
+                              {(prop.enumOptions as any[]).map((opt: any) => (
+                                <span key={typeof opt === 'string' ? opt : opt.value}
+                                  className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">
+                                  {typeof opt === 'string' ? opt : opt.label}
+                                  {typeof opt !== 'string' && (
+                                    <span className="text-purple-400 ml-1 font-mono text-xs">({opt.value})</span>
+                                  )}
+                                </span>
                               ))}
                             </div>
                           ) : (
@@ -1421,52 +1430,90 @@ export function Settings() {
                     Valores válidos
                   </label>
                   <div className="space-y-2">
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        placeholder="Agregar valor (Enter para confirmar)"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addEnumOption((e.target as HTMLInputElement).value);
-                            (e.target as HTMLInputElement).value = '';
-                          }
-                        }}
-                      />
+                    {/* Add new option row */}
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1">
+                        <input
+                          id="enum-value-input"
+                          type="text"
+                          placeholder="Valor interno (ej: credito_personal)"
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          id="enum-label-input"
+                          type="text"
+                          placeholder="Etiqueta (ej: Crédito Personal)"
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const valueInput = document.getElementById('enum-value-input') as HTMLInputElement;
+                              const labelInput = e.target as HTMLInputElement;
+                              addEnumOption(valueInput.value, labelInput.value);
+                              valueInput.value = '';
+                              labelInput.value = '';
+                            }
+                          }}
+                        />
+                      </div>
                       <button
                         type="button"
-                        onClick={(e) => {
-                          const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
-                          addEnumOption(input.value);
-                          input.value = '';
+                        onClick={() => {
+                          const valueInput = document.getElementById('enum-value-input') as HTMLInputElement;
+                          const labelInput = document.getElementById('enum-label-input') as HTMLInputElement;
+                          addEnumOption(valueInput.value, labelInput.value);
+                          valueInput.value = '';
+                          labelInput.value = '';
                         }}
-                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
+                        className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 whitespace-nowrap"
                       >
-                        Agregar
+                        + Agregar
                       </button>
                     </div>
+
+                    <div className="text-xs text-gray-400 flex items-start space-x-4 px-1">
+                      <span className="font-mono">valor_interno</span>
+                      <span>→ etiqueta visible</span>
+                    </div>
+
+                    {/* Options list */}
                     {(propForm.enumOptions || []).length > 0 && (
-                      <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg">
-                        {(propForm.enumOptions || []).map((opt) => (
-                          <span
-                            key={opt}
-                            className="inline-flex items-center space-x-1 px-2 py-1 bg-white border border-gray-200 rounded-lg text-sm"
-                          >
-                            <span>{opt}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeEnumOption(opt)}
-                              className="text-gray-400 hover:text-red-500 ml-1"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Valor interno</th>
+                              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Etiqueta</th>
+                              <th className="px-2 py-2" />
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {(propForm.enumOptions as any[] || []).map((opt: any) => (
+                              <tr key={opt.value}>
+                                <td className="px-3 py-2">
+                                  <code className="text-xs text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{opt.value}</code>
+                                </td>
+                                <td className="px-3 py-2 text-gray-800">{opt.label}</td>
+                                <td className="px-2 py-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeEnumOption(opt.value)}
+                                    className="text-gray-400 hover:text-red-500"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
+
                     <p className="text-xs text-gray-400">
-                      Al usar esta propiedad como filtro, los valores disponibles serán este listado.
+                      El <strong>valor interno</strong> se usa en los filtros de HubSpot. La <strong>etiqueta</strong> aparece en los mensajes como variable.
                     </p>
                   </div>
                 </div>
