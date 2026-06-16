@@ -52,6 +52,7 @@ import type {
   MessageVariant,
   CampaignAIConfig,
   CampaignDataConfig,
+  CampaignDataSourceRef,
   RecipientSourceType,
   SalesUserType,
   CategoriaDesempeno,
@@ -306,6 +307,7 @@ function createDefaultCampaign(): Omit<MessageCampaign, 'id' | 'createdBy' | 'cr
       fetchVideollamadas: false,
       calculatePerformanceCategory: false,
       dateRange: 'current_week',
+      dataSources: [],
     },
     isActive: false,
     executionCount: 0,
@@ -866,234 +868,166 @@ function StepData({
   const dataConfig = campaign.dataConfig || {
     fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false,
     fetchVideollamadas: false, calculatePerformanceCategory: false, dateRange: 'current_week' as const,
+    dataSources: [],
   };
 
-  const updateData = (updates: Partial<CampaignDataConfig>) => {
-    onChange({ dataConfig: { ...dataConfig, ...updates } });
-  };
+  const selectedRefs: CampaignDataSourceRef[] = dataConfig.dataSources || [];
 
-  const [showAdvanced, setShowAdvanced] = useState(!dataConfig.dataSourceId);
+  const isSelected = (dsId: string) => selectedRefs.some((r) => r.dataSourceId === dsId);
 
-  // When a DataSource is selected, derive the manual flags from it
-  const selectedDs = dataSources.find((ds) => ds.id === dataConfig.dataSourceId);
-
-  const handleSelectDs = (dsId: string) => {
-    if (!dsId) {
-      updateData({ dataSourceId: undefined });
-      return;
+  const toggleDs = (dsId: string) => {
+    if (isSelected(dsId)) {
+      onChange({ dataConfig: { ...dataConfig, dataSources: selectedRefs.filter((r) => r.dataSourceId !== dsId) } });
+    } else {
+      onChange({ dataConfig: { ...dataConfig, dataSources: [...selectedRefs, { dataSourceId: dsId, variablePrefix: '' }] } });
     }
-    const ds = dataSources.find((d) => d.id === dsId);
-    if (!ds) return;
-    // Auto-configure manual flags based on the DataSource's variables
-    const keys = ds.variables.map((v) => v.key);
-    updateData({
-      dataSourceId: dsId,
-      fetchSolicitudes: keys.some((k) => k.includes('solicitud')),
-      fetchVentasAvanzadas: keys.some((k) => k.includes('avanzada')),
-      fetchVentasReales: keys.some((k) => k === 'ventas' || k.includes('ventas') && !k.includes('avanzada')),
-      fetchVideollamadas: keys.some((k) => k.includes('videollamada')),
-      calculatePerformanceCategory: keys.some((k) => k === 'categoria'),
+  };
+
+  const updatePrefix = (dsId: string, prefix: string) => {
+    onChange({
+      dataConfig: {
+        ...dataConfig,
+        dataSources: selectedRefs.map((r) =>
+          r.dataSourceId === dsId ? { ...r, variablePrefix: prefix } : r
+        ),
+      },
     });
   };
 
-  // Variables available: from DataSource entity + always-available
-  const dsVariables: { name: string; description: string }[] = selectedDs
-    ? selectedDs.variables.map((v) => ({ name: v.key, description: v.label }))
-    : [];
-  const alwaysVars = TEMPLATE_VARIABLES.filter((v) => !v.requires);
-  const manualVars = getAvailableVariables(dataConfig).filter((v) => v.requires);
-  const allAvailableVars = selectedDs
-    ? [...alwaysVars, ...dsVariables]
-    : [...alwaysVars, ...manualVars];
+  const clearAll = () => {
+    onChange({ dataConfig: { ...dataConfig, dataSources: [] } });
+  };
 
-  const hasAnyData = dataConfig.fetchSolicitudes || dataConfig.fetchVentasAvanzadas
-    || dataConfig.fetchVentasReales || dataConfig.fetchVideollamadas;
+  // Build preview of all available variables (with prefixes)
+  const allVars: { key: string; label: string }[] = [
+    { key: 'nombre', label: 'Nombre del vendedor' },
+    { key: 'tipo_usuario', label: 'Tipo de vendedor' },
+    { key: 'dias_restantes', label: 'Días restantes' },
+    { key: 'progreso_esperado', label: '% progreso esperado' },
+  ];
+  for (const ref of selectedRefs) {
+    const ds = dataSources.find((d) => d.id === ref.dataSourceId);
+    if (!ds) continue;
+    const prefix = ref.variablePrefix || '';
+    for (const v of ds.variables) {
+      allVars.push({ key: `${prefix}${v.key}`, label: `${prefix ? `[${prefix}] ` : ''}${v.label}` });
+    }
+    for (const f of ds.additionalFilters || []) {
+      if (f.propertyName) {
+        allVars.push({ key: `${prefix}${f.propertyName}`, label: `${prefix ? `[${prefix}] ` : ''}${f.propertyName} (filtro)` });
+      }
+    }
+  }
+
+  const hasNone = selectedRefs.length === 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-1">Datos para los mensajes</h3>
         <p className="text-sm text-gray-500">
-          Conecta una fuente de datos para que el mensaje incluya métricas reales de cada destinatario.
+          Selecciona una o más fuentes de datos. Cada fuente puede tener un prefijo para diferenciar sus variables.
         </p>
       </div>
 
-      {/* ── Option A: DataSource entity picker ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">
-            Fuente de datos configurada
-          </label>
-          {dataSources.length === 0 && (
-            <button
-              type="button"
-              onClick={onGoToDataSources}
-              className="text-xs text-slack-purple hover:underline flex items-center space-x-1"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Crear fuente</span>
-            </button>
-          )}
+      {dataSources.length === 0 ? (
+        <div className="p-4 border-2 border-dashed border-gray-200 rounded-lg text-center">
+          <FileBarChart2 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">No tienes fuentes de datos configuradas.</p>
+          <button type="button" onClick={onGoToDataSources} className="mt-2 text-sm text-slack-purple hover:underline">
+            Ir a Fuentes de Datos →
+          </button>
         </div>
+      ) : (
+        <div className="space-y-2">
+          {/* Sin datos option */}
+          <label className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${hasNone ? 'border-gray-300 bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}>
+            <input type="checkbox" checked={hasNone} onChange={clearAll} className="rounded text-slack-purple" />
+            <div>
+              <p className="text-sm font-medium text-gray-700">Sin datos (mensaje simple)</p>
+              <p className="text-xs text-gray-500">Solo variables básicas: nombre, tipo, fecha</p>
+            </div>
+          </label>
 
-        {dataSources.length > 0 ? (
-          <div className="grid grid-cols-1 gap-2">
-            {/* "Sin datos" option */}
-            <label className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-              !dataConfig.dataSourceId ? 'border-gray-300 bg-gray-50' : 'border-gray-200 hover:border-gray-300'
-            }`}>
-              <input
-                type="radio"
-                checked={!dataConfig.dataSourceId}
-                onChange={() => handleSelectDs('')}
-                className="text-slack-purple"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-700">Sin datos (mensaje simple)</p>
-                <p className="text-xs text-gray-500">Solo se usarán variables básicas: nombre, tipo y fecha</p>
-              </div>
-            </label>
-
-            {dataSources.map((ds) => {
-              const isSelected = dataConfig.dataSourceId === ds.id;
-              return (
-                <label
-                  key={ds.id}
-                  className={`flex items-start space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                    isSelected ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
+          {dataSources.map((ds) => {
+            const selected = isSelected(ds.id);
+            const ref = selectedRefs.find((r) => r.dataSourceId === ds.id);
+            const prefix = ref?.variablePrefix || '';
+            return (
+              <div key={ds.id} className={`rounded-lg border-2 transition-all ${selected ? 'border-slack-purple' : 'border-gray-200 hover:border-gray-300'}`}>
+                <label className="flex items-start space-x-3 p-3 cursor-pointer">
                   <input
-                    type="radio"
-                    checked={isSelected}
-                    onChange={() => handleSelectDs(ds.id)}
-                    className="mt-0.5 text-slack-purple"
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggleDs(ds.id)}
+                    className="mt-0.5 rounded text-slack-purple"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
                       <span className="text-base">{ds.icon || '📊'}</span>
                       <p className="text-sm font-medium text-gray-800">{ds.name}</p>
-                      {isSelected && <CheckCircle2 className="w-4 h-4 text-slack-purple ml-auto" />}
+                      {selected && <CheckCircle2 className="w-4 h-4 text-slack-purple ml-auto flex-shrink-0" />}
                     </div>
                     {ds.description && <p className="text-xs text-gray-500 mt-0.5">{ds.description}</p>}
                     <div className="flex flex-wrap gap-1 mt-1.5">
-                      {ds.variables.slice(0, 5).map((v) => (
-                        <code key={v.key} className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded font-mono">{`{{${v.key}}}`}</code>
+                      {ds.variables.slice(0, 4).map((v) => (
+                        <code key={v.key} className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded font-mono">
+                          {`{{${prefix}${v.key}}}`}
+                        </code>
                       ))}
-                      {ds.variables.length > 5 && (
-                        <span className="text-xs text-gray-400">+{ds.variables.length - 5}</span>
+                      {(ds.additionalFilters || []).filter(f => f.propertyName).map((f) => (
+                        <code key={f.propertyName} className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 rounded font-mono">
+                          {`{{${prefix}${f.propertyName}}}`}
+                        </code>
+                      ))}
+                      {ds.variables.length > 4 && <span className="text-xs text-gray-400">+{ds.variables.length - 4}</span>}
+                    </div>
+                  </div>
+                </label>
+
+                {selected && (
+                  <div className="px-3 pb-3 border-t border-gray-100 pt-2">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Prefijo de variables <span className="text-gray-400 font-normal">(opcional — útil si usas varias fuentes)</span>
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={prefix}
+                        onChange={(e) => updatePrefix(ds.id, e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                        placeholder="Ej: cp_ (para Crédito Personal)"
+                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
+                      />
+                      {prefix && (
+                        <span className="text-xs text-gray-400">
+                          → <code className="bg-gray-100 px-1 rounded">{`{{${prefix}solicitudes}}`}</code>
+                        </span>
                       )}
                     </div>
                   </div>
-                </label>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="p-4 border-2 border-dashed border-gray-200 rounded-lg text-center">
-            <FileBarChart2 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No tienes fuentes de datos configuradas.</p>
-            <button
-              type="button"
-              onClick={onGoToDataSources}
-              className="mt-2 text-sm text-slack-purple hover:underline"
-            >
-              Ir a Fuentes de Datos →
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Option B: Manual config (advanced/collapsible) ── */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
-        >
-          <span className="flex items-center space-x-2">
-            <Zap className="w-4 h-4 text-gray-500" />
-            <span>Configuración avanzada{dataConfig.dataSourceId ? ' (sobreescribe la fuente)' : ''}</span>
-          </span>
-          {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
-
-        {showAdvanced && (
-          <div className="p-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {([
-                { key: 'fetchSolicitudes' as const, label: 'Solicitudes creadas', desc: 'Deals nuevos en el período', vars: ['solicitudes', 'meta_solicitudes', 'pct_solicitudes'], emoji: '📋' },
-                { key: 'fetchVentasAvanzadas' as const, label: 'Ventas avanzadas', desc: 'Deals en etapas avanzadas', vars: ['ventas_avanzadas', 'pct_ventas_avanzadas'], emoji: '⚡' },
-                { key: 'fetchVentasReales' as const, label: 'Ventas reales', desc: 'Deals formalizados/desembolsados', vars: ['ventas', 'meta_ventas', 'pct_ventas'], emoji: '💰' },
-                { key: 'fetchVideollamadas' as const, label: 'Videollamadas (BAs)', desc: 'Actividad del día y semana', vars: ['videollamadas_dia', 'videollamadas_semana'], emoji: '📞' },
-                { key: 'calculatePerformanceCategory' as const, label: 'Categoría desempeño', desc: 'Activa variantes condicionales', vars: ['categoria'], emoji: '🏆' },
-              ]).map((option) => (
-                <label
-                  key={option.key}
-                  className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                    dataConfig[option.key] ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={dataConfig[option.key]}
-                    onChange={(e) => updateData({ [option.key]: e.target.checked })}
-                    className="mt-0.5 rounded border-gray-300 text-slack-purple focus:ring-slack-purple"
-                  />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{option.emoji} {option.label}</div>
-                    <div className="text-xs text-gray-500">{option.desc}</div>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {option.vars.map((v) => (
-                        <code key={v} className="px-1 py-0.5 text-xs bg-blue-100 text-blue-700 rounded font-mono">{`{{${v}}}`}</code>
-                      ))}
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            {hasAnyData && (
-              <div className="grid grid-cols-1 gap-3 pt-2 border-t border-gray-100">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Período</label>
-                  <select
-                    value={dataConfig.dateRange}
-                    onChange={(e) => updateData({ dateRange: e.target.value as CampaignDataConfig['dateRange'] })}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
-                  >
-                    <option value="current_week">Semana actual</option>
-                    <option value="last_week">Semana pasada</option>
-                    <option value="current_month">Mes actual</option>
-                    <option value="today">Solo hoy</option>
-                  </select>
-                </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Variables preview */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="text-sm font-medium text-blue-900 mb-2 flex items-center space-x-2">
           <span>Variables disponibles en el mensaje</span>
-          <span className="bg-blue-200 text-blue-800 text-xs px-1.5 py-0.5 rounded-full font-semibold">
-            {allAvailableVars.length}
-          </span>
+          <span className="bg-blue-200 text-blue-800 text-xs px-1.5 py-0.5 rounded-full font-semibold">{allVars.length}</span>
         </h4>
         <div className="flex flex-wrap gap-2">
-          {allAvailableVars.map((v) => (
-            <span key={v.name} className="inline-flex items-center px-2 py-1 bg-white rounded text-xs border border-blue-200 gap-1.5">
-              <code className="text-blue-700 font-mono">{`{{${v.name}}}`}</code>
-              <span className="text-gray-500">{v.description}</span>
+          {allVars.map((v) => (
+            <span key={v.key} className="inline-flex items-center px-2 py-1 bg-white rounded text-xs border border-blue-200 gap-1.5">
+              <code className="text-blue-700 font-mono">{`{{${v.key}}}`}</code>
+              <span className="text-gray-500">{v.label}</span>
             </span>
           ))}
         </div>
-        {allAvailableVars.length <= 4 && (
-          <p className="text-xs text-blue-600 mt-2">
-            Selecciona una fuente de datos o activa métricas para más variables.
-          </p>
+        {hasNone && (
+          <p className="text-xs text-blue-600 mt-2">Selecciona una fuente de datos para más variables.</p>
         )}
       </div>
     </div>
@@ -1106,10 +1040,12 @@ function StepMessage({
   campaign,
   onChange,
   workspaceId,
+  dataSources,
 }: {
   campaign: ReturnType<typeof createDefaultCampaign>;
   onChange: (updates: Partial<ReturnType<typeof createDefaultCampaign>>) => void;
   workspaceId: string;
+  dataSources: DataSource[];
 }) {
   const variants = campaign.messageVariants;
   const slots = campaign.scheduleSlots || [];
@@ -1155,7 +1091,30 @@ function StepMessage({
     { label: 'Largo', tokens: 300, desc: '~150 palabras' },
   ];
 
-  const availableVars = getAvailableVariables(campaign.dataConfig);
+  // Build available vars: legacy flags + multi-DataSource refs (with prefixes)
+  const availableVars = (() => {
+    const base = getAvailableVariables(campaign.dataConfig);
+    const selectedRefs = campaign.dataConfig?.dataSources || [];
+    if (selectedRefs.length > 0) {
+      const dsVars: typeof base = [];
+      for (const ref of selectedRefs) {
+        const ds = dataSources.find((d) => d.id === ref.dataSourceId);
+        if (!ds) continue;
+        const prefix = ref.variablePrefix || '';
+        for (const v of ds.variables) {
+          dsVars.push({ name: `${prefix}${v.key}`, description: `${prefix ? `[${prefix}] ` : ''}${v.label}`, requires: null });
+        }
+        for (const f of ds.additionalFilters || []) {
+          if (f.propertyName) {
+            dsVars.push({ name: `${prefix}${f.propertyName}`, description: `${prefix ? `[${prefix}] ` : ''}${f.propertyName} (filtro)`, requires: null });
+          }
+        }
+      }
+      const alwaysBase = base.filter((v) => !v.requires);
+      return [...alwaysBase, ...dsVars];
+    }
+    return base;
+  })();
 
   const aiConfig = campaign.aiConfig || {
     enabled: false, systemPrompt: '', temperature: 0.7, maxTokens: 120, rewriteMode: 'rewrite' as const,
@@ -2014,7 +1973,7 @@ export function Scheduler() {
               onGoToDataSources={() => navigate('/data-sources')}
             />
           )}
-          {currentStep === 4 && <StepMessage campaign={formData} onChange={updateFormData} workspaceId={selectedWorkspace?.id || ''} />}
+          {currentStep === 4 && <StepMessage campaign={formData} onChange={updateFormData} workspaceId={selectedWorkspace?.id || ''} dataSources={dataSources} />}
           {currentStep === 5 && <StepReview campaign={formData} externalUsers={externalUsers} />}
         </Card>
 

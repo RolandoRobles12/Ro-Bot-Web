@@ -21,6 +21,7 @@ import { dataSourceService, pipelineService } from '@/services/firestore';
 import type {
   DataSource,
   DataSourceVariable,
+  DataSourceFilter,
   DataSourceType,
   DateRangeType,
   StageCategory,
@@ -53,6 +54,12 @@ const STAGE_CATEGORIES: { value: StageCategory; label: string; color: string; de
   { value: 'advanced', label: 'Avanzadas', color: 'bg-purple-500', description: 'Progreso significativo → ventas_avanzadas' },
   { value: 'won', label: 'Ganadas (Ventas)', color: 'bg-green-500', description: 'Cerradas exitosamente → ventas reales' },
   { value: 'lost', label: 'Perdidas', color: 'bg-red-500', description: 'Canceladas o perdidas' },
+];
+
+const FILTER_OPERATORS: { value: DataSourceFilter['operator']; label: string }[] = [
+  { value: 'EQ', label: 'es igual a' },
+  { value: 'NEQ', label: 'no es igual a' },
+  { value: 'CONTAINS', label: 'contiene' },
 ];
 
 const TYPE_ICONS: Record<DataSourceType, string> = {
@@ -123,6 +130,8 @@ function createEmptyDataSource(workspaceId: string): Omit<DataSource, 'id'> {
 function createEmptyVariable(): DataSourceVariable {
   return { key: '', label: '', type: 'number' };
 }
+
+const createEmptyFilter = (): DataSourceFilter => ({ propertyName: '', operator: 'EQ', value: '' });
 
 /** Auto-generate standard variables based on selected stage categories */
 function autoGenerateVariables(stageCategories: StageCategory[]): DataSourceVariable[] {
@@ -267,6 +276,18 @@ export function DataSources() {
     setForm((p) => ({
       ...p,
       variables: p.variables.map((v, idx) => (idx === i ? { ...v, ...updates } : v)),
+    }));
+
+  // ── Filter helpers ───────────────────────────────────────────────────────
+
+  const addFilter = () =>
+    setForm((p) => ({ ...p, additionalFilters: [...(p.additionalFilters || []), createEmptyFilter()] }));
+  const removeFilter = (i: number) =>
+    setForm((p) => ({ ...p, additionalFilters: (p.additionalFilters || []).filter((_, idx) => idx !== i) }));
+  const updateFilter = (i: number, updates: Partial<DataSourceFilter>) =>
+    setForm((p) => ({
+      ...p,
+      additionalFilters: (p.additionalFilters || []).map((f, idx) => (idx === i ? { ...f, ...updates } : f)),
     }));
 
   // ── Derived ──────────────────────────────────────────────────────────────
@@ -596,6 +617,74 @@ export function DataSources() {
                     </div>
                   </div>
 
+                </div>
+              )}
+
+              {/* ── 3c. Additional filters ──────────────────────── */}
+              {form.type === 'pipeline' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700">Filtros adicionales</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Filtra los deals por propiedades custom de HubSpot. El valor de cada filtro queda disponible como variable en los mensajes.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addFilter}
+                      className="flex items-center space-x-1 px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Agregar</span>
+                    </button>
+                  </div>
+
+                  {(form.additionalFilters || []).length === 0 ? (
+                    <div className="text-center py-4 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-xs">
+                      Sin filtros — se incluyen todos los deals del pipeline
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(form.additionalFilters || []).map((f, i) => (
+                        <div key={i} className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={f.propertyName}
+                            onChange={(e) => updateFilter(i, { propertyName: e.target.value })}
+                            placeholder="nombre_propiedad"
+                            className="w-36 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
+                          />
+                          <select
+                            value={f.operator}
+                            onChange={(e) => updateFilter(i, { operator: e.target.value as DataSourceFilter['operator'] })}
+                            className="w-32 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                          >
+                            {FILTER_OPERATORS.map((op) => (
+                              <option key={op.value} value={op.value}>{op.label}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={f.value}
+                            onChange={(e) => updateFilter(i, { value: e.target.value })}
+                            placeholder="valor"
+                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                          />
+                          <button onClick={() => removeFilter(i)} className="p-1.5 text-gray-400 hover:text-red-500">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(form.additionalFilters || []).filter(f => f.propertyName).map((f, i) => (
+                          <span key={i} className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded text-xs font-mono">
+                            {`{{${f.propertyName}}}`} = &quot;{f.value}&quot;
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
