@@ -773,6 +773,25 @@ export const pipelineService = {
     ),
 };
 
+// Custom HubSpot Property catalog services (uses 'custom_properties' collection)
+export const customPropertyService = {
+  getByWorkspace: (workspaceId: string): Promise<CustomHubSpotProperty[]> =>
+    getDocuments<CustomHubSpotProperty>(
+      'custom_properties',
+      where('workspaceId', '==', workspaceId),
+      where('isActive', '==', true),
+      orderBy('label', 'asc')
+    ),
+  create: async (data: Omit<CustomHubSpotProperty, 'id'>): Promise<CustomHubSpotProperty> => {
+    const id = await createDocument<CustomHubSpotProperty>('custom_properties', data);
+    return { ...data, id } as CustomHubSpotProperty;
+  },
+  update: (id: string, data: Partial<CustomHubSpotProperty>): Promise<void> =>
+    updateDocument('custom_properties', id, data),
+  delete: (id: string): Promise<void> =>
+    deleteDocument('custom_properties', id),
+};
+
 // DataSource services
 export const dataSourceService = {
   get: (dataSourceId: string) =>

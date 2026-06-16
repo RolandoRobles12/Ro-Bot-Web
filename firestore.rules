@@ -119,5 +119,10 @@ service cloud.firestore {
       allow read: if isViewer();
       allow write: if isAdmin();
     }
+
+    match /custom_properties/{propId} {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
   }
 }
