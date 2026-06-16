@@ -6,7 +6,6 @@ import {
   Trash2,
   Edit2,
   GitBranch,
-  Layers,
   Globe,
   Sparkles,
   CheckCircle2,
@@ -34,7 +33,6 @@ import type {
 
 const DATA_SOURCE_TYPES: { value: DataSourceType; label: string; icon: React.ElementType; description: string }[] = [
   { value: 'pipeline', label: 'Pipeline HubSpot', icon: GitBranch, description: 'Métricas de solicitudes, ventas y desempeño' },
-  { value: 'property', label: 'Propiedades HubSpot', icon: Layers, description: 'Propiedades específicas de contactos o negocios' },
   { value: 'api', label: 'API Externa', icon: Globe, description: 'Datos desde un endpoint REST externo' },
 ];
 
