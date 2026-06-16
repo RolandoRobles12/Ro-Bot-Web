@@ -2374,21 +2374,36 @@ export const getHubSpotPipelineStages = functions.https.onCall(
     try {
       const { workspaceId, pipelineId } = data;
 
-      const hubspotConnections = await db
+      // Try workspace-specific connection first, then fall back to any active connection
+      let connectionsSnap = await db
         .collection('hubspot_connections')
         .where('workspaceId', '==', workspaceId)
         .where('isActive', '==', true)
         .limit(1)
         .get();
 
-      if (hubspotConnections.empty) {
+      if (connectionsSnap.empty) {
+        connectionsSnap = await db
+          .collection('hubspot_connections')
+          .where('isActive', '==', true)
+          .limit(1)
+          .get();
+      }
+
+      if (connectionsSnap.empty) {
         throw new functions.https.HttpsError(
           'failed-precondition',
-          'No hay conexión activa de HubSpot para este workspace'
+          'No hay conexión activa de HubSpot. Configúrala en Integraciones.'
         );
       }
 
-      const accessToken = hubspotConnections.docs[0].data().accessToken;
+      const accessToken = connectionsSnap.docs[0].data().accessToken;
+      if (!accessToken) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'La conexión de HubSpot no tiene un access token válido.'
+        );
+      }
 
       const response = await axios.get(
         `https://api.hubapi.com/crm/v3/pipelines/deals/${pipelineId}/stages`,
@@ -2407,7 +2422,8 @@ export const getHubSpotPipelineStages = functions.https.onCall(
     } catch (error: any) {
       console.error('Error fetching HubSpot pipeline stages:', error?.response?.data || error.message);
       if (error instanceof functions.https.HttpsError) throw error;
-      throw new functions.https.HttpsError('internal', error.message);
+      const hubspotMsg = error?.response?.data?.message;
+      throw new functions.https.HttpsError('internal', hubspotMsg || error.message);
     }
   }
 );
