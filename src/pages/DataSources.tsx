@@ -261,16 +261,6 @@ export function DataSources() {
 
   // ── Variable helpers ─────────────────────────────────────────────────────
 
-  const handleAutoGenerateVars = () => {
-    const cats = form.stageCategories || [];
-    if (cats.length === 0) {
-      toast.error('Selecciona al menos una categoría de etapa primero');
-      return;
-    }
-    setForm((prev) => ({ ...prev, variables: autoGenerateVariables(cats) }));
-    toast.success(`${autoGenerateVariables(cats).length} variables generadas`);
-  };
-
   const addVariable = () =>
     setForm((p) => ({ ...p, variables: [...p.variables, createEmptyVariable()] }));
   const removeVariable = (i: number) =>
@@ -283,7 +273,6 @@ export function DataSources() {
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
-  const selectedPipeline = pipelines.find((p) => p.id === form.pipelineId);
 
   useEffect(() => {
     if (form.type !== 'pipeline') return;
