@@ -26,7 +26,6 @@ import {
   ChevronDown,
   ChevronUp,
   FileBarChart2,
-  Zap,
   CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
