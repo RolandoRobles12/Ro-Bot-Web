@@ -234,6 +234,11 @@ export interface AppSettings {
   updatedAt: Timestamp;
 }
 
+export interface EnumOption {
+  value: string;   // Internal HubSpot value (used in API filters)
+  label: string;   // Human-readable label (shown in messages and UI)
+}
+
 /**
  * Custom HubSpot property configured by the user.
  * Used in Rules and other places instead of hardcoded properties.
@@ -245,7 +250,7 @@ export interface CustomHubSpotProperty {
   label: string;                // Display label
   category: 'deal' | 'contact' | 'company' | 'custom';
   type: 'string' | 'number' | 'date' | 'boolean' | 'enum';
-  enumOptions?: string[];       // For enum type
+  enumOptions?: EnumOption[];    // For enum type
   description?: string;
   isActive: boolean;
   createdAt: Timestamp;
@@ -362,6 +367,7 @@ export interface DataSourceFilter {
   propertyName: string;  // HubSpot property name (e.g., "producto")
   operator: 'EQ' | 'NEQ' | 'CONTAINS';
   value: string;
+  displayValue?: string;  // Human-readable label for the selected enum value
 }
 
 /**

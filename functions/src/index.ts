@@ -1829,9 +1829,11 @@ async function fetchRecipientMetrics(
       }
 
       // Store filter values as string vars with __str__ sentinel
-      for (const f of ds.additionalFilters || []) {
+      for (const f of (ds.additionalFilters || []) as any[]) {
         if (f.propertyName && f.value) {
-          metrics[`__str__${prefix}${f.propertyName}`] = f.value;
+          // Use human-readable label if available, fall back to raw value
+          const displayVal = f.displayValue || f.value;
+          metrics[`__str__${prefix}${f.propertyName}`] = displayVal;
         }
       }
     }
