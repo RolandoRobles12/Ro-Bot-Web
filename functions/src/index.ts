@@ -2364,3 +2364,50 @@ export const triggerCampaign = functions
     }
   }
 );
+
+// ==========================================================================
+// =        GET HUBSPOT PIPELINE STAGES                                      =
+// ==========================================================================
+
+export const getHubSpotPipelineStages = functions.https.onCall(
+  async (data: { workspaceId: string; pipelineId: string }, _context) => {
+    try {
+      const { workspaceId, pipelineId } = data;
+
+      const hubspotConnections = await db
+        .collection('hubspot_connections')
+        .where('workspaceId', '==', workspaceId)
+        .where('isActive', '==', true)
+        .limit(1)
+        .get();
+
+      if (hubspotConnections.empty) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'No hay conexión activa de HubSpot para este workspace'
+        );
+      }
+
+      const accessToken = hubspotConnections.docs[0].data().accessToken;
+
+      const response = await axios.get(
+        `https://api.hubapi.com/crm/v3/pipelines/deals/${pipelineId}/stages`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+
+      const stages = (response.data.results || []).map((s: any) => ({
+        id: s.id,
+        label: s.label,
+        displayOrder: s.displayOrder ?? 0,
+      }));
+
+      stages.sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+
+      return { stages };
+    } catch (error: any) {
+      console.error('Error fetching HubSpot pipeline stages:', error?.response?.data || error.message);
+      if (error instanceof functions.https.HttpsError) throw error;
+      throw new functions.https.HttpsError('internal', error.message);
+    }
+  }
+);

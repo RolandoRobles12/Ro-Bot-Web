@@ -36,6 +36,14 @@ export const readGoogleSheet = httpsCallable<
 >(functions, 'readGoogleSheet');
 
 /**
+ * Fetch pipeline stages directly from HubSpot API.
+ */
+export const getHubSpotPipelineStages = httpsCallable<
+  { workspaceId: string; pipelineId: string },
+  { stages: { id: string; label: string; displayOrder: number }[] }
+>(functions, 'getHubSpotPipelineStages');
+
+/**
  * Calculate sales metrics for a user from HubSpot.
  */
 export const calculateSalesMetrics = httpsCallable<

@@ -9,7 +9,6 @@ import {
   X,
   Building2,
   Layers,
-  GripVertical,
   Sparkles,
   Globe,
   Plug,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
+import { getHubSpotPipelineStages } from '@/services/cloudFunctions';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/appStore';
@@ -85,13 +85,6 @@ const createEmptyPipeline = (workspaceId: string): Omit<Pipeline, 'id'> => ({
   updatedAt: Timestamp.now(),
 });
 
-// Helper to create empty stage
-const createEmptyStage = (order: number): PipelineStage => ({
-  id: `stage_${Date.now()}_${order}`,
-  name: '',
-  category: 'new',
-  order,
-});
 
 export function Settings() {
   const { selectedWorkspace } = useAppStore();
@@ -106,6 +99,7 @@ export function Settings() {
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
   const [pipelineForm, setPipelineForm] = useState<Omit<Pipeline, 'id'>>(createEmptyPipeline(''));
   const [savingPipeline, setSavingPipeline] = useState(false);
+  const [loadingStages, setLoadingStages] = useState(false);
 
   // Custom properties state
   const [customProperties, setCustomProperties] = useState<CustomHubSpotProperty[]>([]);
@@ -258,11 +252,31 @@ export function Settings() {
     }
   };
 
-  const addStage = () => {
-    setPipelineForm((prev) => ({
-      ...prev,
-      stages: [...prev.stages, createEmptyStage(prev.stages.length)],
-    }));
+  const loadStagesFromHubSpot = async () => {
+    if (!pipelineForm.hubspotPipelineId) {
+      toast.error('Ingresa el Pipeline ID primero');
+      return;
+    }
+    if (!selectedWorkspace?.id) return;
+    setLoadingStages(true);
+    try {
+      const result = await getHubSpotPipelineStages({
+        workspaceId: selectedWorkspace.id,
+        pipelineId: pipelineForm.hubspotPipelineId,
+      });
+      const stages: PipelineStage[] = result.data.stages.map((s, i) => ({
+        id: s.id,
+        name: s.label,
+        category: 'new' as StageCategory,
+        order: i,
+      }));
+      setPipelineForm((prev) => ({ ...prev, stages }));
+      toast.success(`${stages.length} etapas cargadas desde HubSpot`);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al cargar etapas de HubSpot');
+    } finally {
+      setLoadingStages(false);
+    }
   };
 
   const removeStage = (index: number) => {
@@ -491,12 +505,6 @@ export function Settings() {
                     </code>
                     <span className="text-gray-400">·</span>
                     <span className="text-gray-600">{pipeline.stages.length} etapas</span>
-                    {pipeline.realSalesProperty && (
-                      <>
-                        <span className="text-gray-400">·</span>
-                        <span className="text-gray-500 text-xs">ventas: <code className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono">{pipeline.realSalesProperty}</code></span>
-                      </>
-                    )}
                   </div>
                 );
               })()}
@@ -931,68 +939,55 @@ export function Settings() {
                   </label>
                   <button
                     type="button"
-                    onClick={addStage}
-                    className="text-sm text-slack-purple hover:text-slack-purple/80"
+                    onClick={loadStagesFromHubSpot}
+                    disabled={loadingStages}
+                    className="text-sm text-slack-purple hover:text-slack-purple/80 disabled:opacity-50 flex items-center space-x-1"
                   >
-                    + Agregar etapa
+                    {loadingStages ? (
+                      <span>Cargando…</span>
+                    ) : (
+                      <span>↻ Cargar desde HubSpot</span>
+                    )}
                   </button>
                 </div>
 
                 {pipelineForm.stages.length === 0 && (
                   <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                     <Layers className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">
-                      Agrega las etapas de tu pipeline y clasifícalas
+                    <p className="text-sm text-gray-500 mb-3">
+                      Carga las etapas directamente desde tu cuenta de HubSpot
                     </p>
                     <button
                       type="button"
-                      onClick={addStage}
-                      className="mt-2 text-sm text-slack-purple hover:underline"
+                      onClick={loadStagesFromHubSpot}
+                      disabled={loadingStages}
+                      className="text-sm text-slack-purple hover:underline disabled:opacity-50"
                     >
-                      + Agregar primera etapa
+                      {loadingStages ? 'Cargando…' : '↻ Cargar etapas desde HubSpot'}
                     </button>
                   </div>
                 )}
 
                 <div className="space-y-2">
                   {pipelineForm.stages.map((stage, index) => (
-                    <div
-                      key={stage.id}
-                      className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg"
-                    >
-                      <GripVertical className="w-4 h-4 text-gray-400 cursor-move" />
-                      <input
-                        type="text"
-                        value={stage.name}
-                        onChange={(e) => updateStage(index, { name: e.target.value })}
-                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                        placeholder="Nombre de la etapa"
-                      />
-                      <input
-                        type="text"
-                        value={stage.id}
-                        onChange={(e) => updateStage(index, { id: e.target.value })}
-                        className="w-36 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                        placeholder="ID en HubSpot"
-                        title="ID de la etapa en HubSpot (ej: 33823866)"
-                      />
+                    <div key={stage.id} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{stage.name}</p>
+                        <p className="text-xs text-gray-400 font-mono">{stage.id}</p>
+                      </div>
                       <select
                         value={stage.category}
-                        onChange={(e) =>
-                          updateStage(index, { category: e.target.value as StageCategory })
-                        }
+                        onChange={(e) => updateStage(index, { category: e.target.value as StageCategory })}
                         className="w-36 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent"
                       >
                         {STAGE_CATEGORIES.map((cat) => (
-                          <option key={cat.value} value={cat.value}>
-                            {cat.label}
-                          </option>
+                          <option key={cat.value} value={cat.value}>{cat.label}</option>
                         ))}
                       </select>
                       <button
                         type="button"
                         onClick={() => removeStage(index)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                        className="p-1.5 text-gray-300 hover:text-red-500 rounded"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1011,53 +1006,6 @@ export function Settings() {
                 </div>
               </div>
 
-              {/* HubSpot Properties */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                    Propiedades de HubSpot
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Campos específicos de tu cuenta de HubSpot que el sistema usa para calcular métricas.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Propiedad de ventas reales
-                  </label>
-                  <input
-                    type="text"
-                    value={pipelineForm.realSalesProperty || ''}
-                    onChange={(e) =>
-                      setPipelineForm((prev) => ({ ...prev, realSalesProperty: e.target.value || undefined }))
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
-                    placeholder="hs_v2_date_entered_XXXXXXXX"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    La propiedad <code className="bg-gray-100 px-1 rounded">hs_v2_date_entered_*</code> que indica que un deal fue desembolsado o cerrado como venta real. Si se deja vacío, usa <code className="bg-gray-100 px-1 rounded">hs_v2_date_entered_33823866</code> por defecto.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Propiedad de monto
-                  </label>
-                  <input
-                    type="text"
-                    value={pipelineForm.amountProperty || ''}
-                    onChange={(e) =>
-                      setPipelineForm((prev) => ({ ...prev, amountProperty: e.target.value || undefined }))
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
-                    placeholder="amount"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    La propiedad de HubSpot que contiene el monto del deal. Por defecto: <code className="bg-gray-100 px-1 rounded">amount</code>.
-                  </p>
-                </div>
-              </div>
             </div>
 
             <div className="p-6 border-t border-gray-200 flex justify-end space-x-3 sticky bottom-0 bg-white">
