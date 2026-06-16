@@ -8,7 +8,6 @@ import {
   Save,
   X,
   Building2,
-  GitBranch,
   Layers,
   GripVertical,
   Sparkles,
@@ -69,12 +68,6 @@ const TIMEZONES = [
   { value: 'America/New_York', label: 'Nueva York (GMT-5)' },
 ];
 
-const PIPELINE_COLORS = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
-  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
-];
-
-const PIPELINE_ICONS = ['💼', '🏪', '🤝', '📈', '🎯', '💰', '🚀', '⭐', '🔥', '💎'];
 
 // Helper to create empty pipeline
 const createEmptyPipeline = (workspaceId: string): Omit<Pipeline, 'id'> => ({
@@ -233,8 +226,8 @@ export function Settings() {
   };
 
   const savePipeline = async () => {
-    if (!pipelineForm.name || !pipelineForm.hubspotPipelineId) {
-      toast.error('Nombre y Pipeline ID son requeridos');
+    if (!pipelineForm.hubspotPipelineId) {
+      toast.error('Pipeline ID es requerido');
       return;
     }
     try {
@@ -248,6 +241,7 @@ export function Settings() {
       } else {
         await pipelineService.create({
           ...pipelineForm,
+          name: pipelineForm.name || pipelineForm.hubspotPipelineId,
           workspaceId: selectedWorkspace?.id || '',
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
@@ -460,90 +454,50 @@ export function Settings() {
           <div className="space-y-10">
 
             {/* ── Pipeline section ── */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Pipeline de HubSpot</h2>
-                  <p className="text-sm text-gray-500">Etapas y propiedades del pipeline de ventas</p>
-                </div>
-                {!loading && pipelines.length === 0 && (
-                  <Button onClick={() => openPipelineModal()}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Configurar pipeline
-                  </Button>
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Pipeline de HubSpot</h2>
+                {!loading && pipelines.length > 0 && (
+                  <button
+                    onClick={() => openPipelineModal(pipelines[0])}
+                    className="text-xs text-slack-purple hover:underline flex items-center space-x-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>Editar</span>
+                  </button>
                 )}
               </div>
 
-              {loading && <div className="text-center py-8 text-gray-400">Cargando…</div>}
+              {loading && <div className="h-10 bg-gray-100 rounded-lg animate-pulse" />}
 
               {!loading && pipelines.length === 0 && (
-                <Card className="p-10 text-center">
-                  <GitBranch className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <h3 className="text-base font-medium text-gray-900 mb-2">Pipeline no configurado</h3>
-                  <p className="text-sm text-gray-500 mb-5 max-w-sm mx-auto">
-                    Conecta tu pipeline de HubSpot para que las fuentes de datos puedan leer métricas de solicitudes y ventas.
-                  </p>
-                  <Button onClick={() => openPipelineModal()}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Configurar pipeline
-                  </Button>
-                </Card>
+                <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <span className="text-sm text-amber-700">Sin pipeline configurado</span>
+                  <button
+                    onClick={() => openPipelineModal()}
+                    className="text-xs text-amber-700 font-medium hover:underline"
+                  >
+                    + Configurar
+                  </button>
+                </div>
               )}
 
               {!loading && pipelines.length > 0 && (() => {
                 const pipeline = pipelines[0];
-                const cat = (c: string) => STAGE_CATEGORIES.find((s) => s.value === c);
                 return (
-                  <Card className="p-5 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: pipeline.color }} />
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-2xl">{pipeline.icon}</span>
-                        <div>
-                          <h3 className="font-bold text-gray-900">{pipeline.name}</h3>
-                          <p className="text-xs text-gray-500 font-mono mt-0.5">{pipeline.hubspotPipelineId}</p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" onClick={() => openPipelineModal(pipeline)}>
-                        <Edit2 className="w-4 h-4 mr-1.5" />
-                        Editar
-                      </Button>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      {pipeline.stages.length === 0 ? (
-                        <p className="text-sm text-gray-400">Sin etapas configuradas.</p>
-                      ) : pipeline.stages.map((stage) => {
-                        const category = cat(stage.category);
-                        return (
-                          <div key={stage.id} className="flex items-center space-x-3 py-1.5 px-3 bg-gray-50 rounded-lg">
-                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${category?.color || 'bg-gray-300'}`} />
-                            <span className="text-sm text-gray-800 flex-1">{stage.name || '(sin nombre)'}</span>
-                            <span className="text-xs text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
-                              {category?.label || stage.category}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {(pipeline.realSalesProperty || pipeline.amountProperty) && (
-                      <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3">
-                        {pipeline.realSalesProperty && (
-                          <div>
-                            <span className="text-xs text-gray-500">Ventas reales</span>
-                            <code className="block mt-0.5 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{pipeline.realSalesProperty}</code>
-                          </div>
-                        )}
-                        {pipeline.amountProperty && (
-                          <div>
-                            <span className="text-xs text-gray-500">Monto</span>
-                            <code className="block mt-0.5 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{pipeline.amountProperty}</code>
-                          </div>
-                        )}
-                      </div>
+                  <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center space-x-4 text-sm">
+                    <code className="text-gray-700 font-mono text-xs bg-white border border-gray-200 px-2 py-0.5 rounded">
+                      {pipeline.hubspotPipelineId}
+                    </code>
+                    <span className="text-gray-400">·</span>
+                    <span className="text-gray-600">{pipeline.stages.length} etapas</span>
+                    {pipeline.realSalesProperty && (
+                      <>
+                        <span className="text-gray-400">·</span>
+                        <span className="text-gray-500 text-xs">ventas: <code className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono">{pipeline.realSalesProperty}</code></span>
+                      </>
                     )}
-                  </Card>
+                  </div>
                 );
               })()}
             </div>
@@ -941,7 +895,7 @@ export function Settings() {
             <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-gray-900">
-                  {editingPipeline ? 'Editar Pipeline' : 'Nuevo Pipeline'}
+                  {editingPipeline ? 'Editar configuración del pipeline' : 'Configurar pipeline'}
                 </h2>
                 <button onClick={closePipelineModal} className="text-gray-400 hover:text-gray-500">
                   <X className="w-5 h-5" />
@@ -950,90 +904,23 @@ export function Settings() {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Basic info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Nombre del pipeline *
-                  </label>
-                  <input
-                    type="text"
-                    value={pipelineForm.name}
-                    onChange={(e) => setPipelineForm((prev) => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                    placeholder="Ej: Ventas Kioscos"
-                  />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    HubSpot Pipeline ID *
-                  </label>
-                  <input
-                    type="text"
-                    value={pipelineForm.hubspotPipelineId}
-                    onChange={(e) =>
-                      setPipelineForm((prev) => ({ ...prev, hubspotPipelineId: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
-                    placeholder="default"
-                  />
-                </div>
-              </div>
-
+              {/* Pipeline ID */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Descripción (opcional)
+                  HubSpot Pipeline ID <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  value={pipelineForm.description || ''}
+                <input
+                  type="text"
+                  value={pipelineForm.hubspotPipelineId}
                   onChange={(e) =>
-                    setPipelineForm((prev) => ({ ...prev, description: e.target.value }))
+                    setPipelineForm((prev) => ({ ...prev, hubspotPipelineId: e.target.value }))
                   }
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                  placeholder="Describe para qué se usa este pipeline"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                  placeholder="default"
                 />
-              </div>
-
-              {/* Icon and color */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Icono</label>
-                  <div className="flex flex-wrap gap-2">
-                    {PIPELINE_ICONS.map((icon) => (
-                      <button
-                        key={icon}
-                        type="button"
-                        onClick={() => setPipelineForm((prev) => ({ ...prev, icon }))}
-                        className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center text-lg transition-colors ${
-                          pipelineForm.icon === icon
-                            ? 'border-slack-purple bg-slack-purple/5'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        {icon}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
-                  <div className="flex flex-wrap gap-2">
-                    {PIPELINE_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setPipelineForm((prev) => ({ ...prev, color }))}
-                        className={`w-8 h-8 rounded-full border-2 transition-all ${
-                          pipelineForm.color === color
-                            ? 'border-gray-900 scale-110'
-                            : 'border-transparent hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  El ID del pipeline en HubSpot. Encuéntralo en Configuración → Pipelines de negocios.
+                </p>
               </div>
 
               {/* Stages */}
