@@ -163,7 +163,11 @@ function autoGenerateVariables(stageCategories: StageCategory[]): DataSourceVari
 // Component
 // ==========================================================================
 
-export function DataSources() {
+interface DataSourcesProps {
+  embedded?: boolean;
+  onNavigateToPipelines?: () => void;
+}
+export function DataSources({ embedded = false, onNavigateToPipelines }: DataSourcesProps = {}) {
   const navigate = useNavigate();
   const { selectedWorkspace } = useAppStore();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
@@ -324,21 +328,37 @@ export function DataSources() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Fuentes de Datos</h1>
-          <p className="mt-1 text-gray-500">
-            Define de dónde se obtienen las métricas que alimentan tus campañas.
-            Las variables de cada fuente estarán disponibles en los mensajes como{' '}
+      {/* Header — hidden when embedded (Settings provides its own heading) */}
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Fuentes de Datos</h1>
+            <p className="mt-1 text-gray-500">
+              Define de dónde se obtienen las métricas que alimentan tus campañas.
+              Las variables de cada fuente estarán disponibles en los mensajes como{' '}
+              <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">{'{{variable}}'}</code>.
+            </p>
+          </div>
+          <Button onClick={() => openModal()} className="flex items-center space-x-2">
+            <Plus className="w-4 h-4" />
+            <span>Nueva Fuente</span>
+          </Button>
+        </div>
+      )}
+
+      {/* Header for embedded mode */}
+      {embedded && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Define las métricas que alimentan tus campañas. Las variables estarán disponibles como{' '}
             <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">{'{{variable}}'}</code>.
           </p>
+          <Button onClick={() => openModal()} className="flex items-center space-x-2">
+            <Plus className="w-4 h-4" />
+            <span>Nueva Fuente</span>
+          </Button>
         </div>
-        <Button onClick={() => openModal()} className="flex items-center space-x-2">
-          <Plus className="w-4 h-4" />
-          <span>Nueva Fuente</span>
-        </Button>
-      </div>
+      )}
 
       {/* Quick-start templates — only shown when no data sources yet */}
       {!loading && dataSources.length === 0 && (
@@ -565,7 +585,7 @@ export function DataSources() {
                         No hay pipelines configurados.{' '}
                         <button
                           type="button"
-                          onClick={() => { closeModal(); navigate('/settings'); }}
+                          onClick={() => { closeModal(); onNavigateToPipelines ? onNavigateToPipelines() : navigate('/settings'); }}
                           className="underline"
                         >
                           Agregar en Configuración →

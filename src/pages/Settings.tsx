@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
   Database,
@@ -20,7 +19,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Copy,
-  ChevronRight,
   Edit2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,11 +26,11 @@ import { Timestamp } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/appStore';
+import { DataSources } from '@/pages/DataSources';
 import {
   workspaceService,
   workspaceSettingsService,
   pipelineService,
-  dataSourceService,
   customPropertyService,
 } from '@/services/firestore';
 import type {
@@ -41,17 +39,14 @@ import type {
   Pipeline,
   PipelineStage,
   StageCategory,
-  DataSource,
-  DataSourceVariable,
-  DataSourceType,
-  DateRangeType,
   CustomHubSpotProperty,
 } from '@/types';
 
-type Tab = 'pipelines' | 'properties' | 'integrations' | 'general' | 'notifications';
+type Tab = 'pipelines' | 'datasources' | 'properties' | 'integrations' | 'general' | 'notifications';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'pipelines', label: 'Pipelines', icon: GitBranch, description: 'Configura tus pipelines de HubSpot' },
+  { id: 'datasources', label: 'Fuentes de Datos', icon: Database, description: 'Métricas y variables para campañas' },
   { id: 'properties', label: 'Propiedades', icon: Layers, description: 'Propiedades custom de HubSpot' },
   { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI y Slack' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
@@ -64,23 +59,6 @@ const STAGE_CATEGORIES: { value: StageCategory; label: string; color: string; de
   { value: 'advanced', label: 'Avanzado', color: 'bg-purple-500', description: 'Progreso significativo' },
   { value: 'won', label: 'Ganado', color: 'bg-green-500', description: 'Cerrado exitosamente' },
   { value: 'lost', label: 'Perdido', color: 'bg-red-500', description: 'No se concretó' },
-];
-
-const DATA_SOURCE_TYPES: { value: DataSourceType; label: string; icon: React.ElementType; description: string }[] = [
-  { value: 'pipeline', label: 'Pipeline de HubSpot', icon: GitBranch, description: 'Métricas de un pipeline específico' },
-  { value: 'property', label: 'Propiedades HubSpot', icon: Layers, description: 'Propiedades específicas de contactos o negocios' },
-  { value: 'api', label: 'API Externa', icon: Globe, description: 'Datos de un endpoint externo' },
-];
-
-const DATE_RANGES: { value: DateRangeType; label: string }[] = [
-  { value: 'today', label: 'Hoy' },
-  { value: 'yesterday', label: 'Ayer' },
-  { value: 'this_week', label: 'Esta semana' },
-  { value: 'last_week', label: 'Semana pasada' },
-  { value: 'this_month', label: 'Este mes' },
-  { value: 'last_month', label: 'Mes pasado' },
-  { value: 'this_quarter', label: 'Este trimestre' },
-  { value: 'this_year', label: 'Este año' },
 ];
 
 const TIMEZONES = [
@@ -115,19 +93,6 @@ const createEmptyPipeline = (workspaceId: string): Omit<Pipeline, 'id'> => ({
   updatedAt: Timestamp.now(),
 });
 
-// Helper to create empty data source
-const createEmptyDataSource = (workspaceId: string): Omit<DataSource, 'id'> => ({
-  workspaceId,
-  name: '',
-  type: 'pipeline',
-  icon: '📊',
-  dateRange: 'this_week',
-  variables: [],
-  isActive: true,
-  createdAt: Timestamp.now(),
-  updatedAt: Timestamp.now(),
-});
-
 // Helper to create empty stage
 const createEmptyStage = (order: number): PipelineStage => ({
   id: `stage_${Date.now()}_${order}`,
@@ -136,20 +101,11 @@ const createEmptyStage = (order: number): PipelineStage => ({
   order,
 });
 
-// Helper to create empty variable
-const createEmptyVariable = (): DataSourceVariable => ({
-  key: '',
-  label: '',
-  type: 'number',
-});
-
 export function Settings() {
-  const navigate = useNavigate();
   const { selectedWorkspace } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>('pipelines');
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [_dataSources, setDataSources] = useState<DataSource[]>([]);
   const [_settings, setSettings] = useState<WorkspaceSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -158,12 +114,6 @@ export function Settings() {
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
   const [pipelineForm, setPipelineForm] = useState<Omit<Pipeline, 'id'>>(createEmptyPipeline(''));
   const [savingPipeline, setSavingPipeline] = useState(false);
-
-  // DataSource modal state
-  const [isDataSourceModalOpen, setIsDataSourceModalOpen] = useState(false);
-  const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
-  const [dataSourceForm, setDataSourceForm] = useState<Omit<DataSource, 'id'>>(createEmptyDataSource(''));
-  const [savingDataSource, setSavingDataSource] = useState(false);
 
   // Custom properties state
   const [customProperties, setCustomProperties] = useState<CustomHubSpotProperty[]>([]);
@@ -203,7 +153,6 @@ export function Settings() {
   useEffect(() => {
     if (selectedWorkspace?.id) {
       loadPipelines();
-      loadDataSources();
       loadSettings();
       customPropertyService.getByWorkspace(selectedWorkspace.id).then(setCustomProperties).catch(console.error);
     }
@@ -229,16 +178,6 @@ export function Settings() {
       console.error(error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadDataSources = async () => {
-    if (!selectedWorkspace?.id) return;
-    try {
-      const data = await dataSourceService.getByWorkspace(selectedWorkspace.id);
-      setDataSources(data);
-    } catch (error) {
-      console.error('Error loading data sources:', error);
     }
   };
 
@@ -326,18 +265,6 @@ export function Settings() {
     }
   };
 
-  const deletePipeline = async (pipelineId: string) => {
-    if (!confirm('¿Estás seguro de eliminar este pipeline?')) return;
-    try {
-      await pipelineService.delete(pipelineId);
-      toast.success('Pipeline eliminado');
-      loadPipelines();
-    } catch (error) {
-      toast.error('Error al eliminar');
-      console.error(error);
-    }
-  };
-
   const addStage = () => {
     setPipelineForm((prev) => ({
       ...prev,
@@ -357,70 +284,6 @@ export function Settings() {
       ...prev,
       stages: prev.stages.map((stage, i) =>
         i === index ? { ...stage, ...updates } : stage
-      ),
-    }));
-  };
-
-  // ==================== DATA SOURCE HANDLERS ====================
-
-
-  const closeDataSourceModal = () => {
-    setIsDataSourceModalOpen(false);
-    setEditingDataSource(null);
-  };
-
-  const saveDataSource = async () => {
-    if (!dataSourceForm.name) {
-      toast.error('El nombre es requerido');
-      return;
-    }
-    try {
-      setSavingDataSource(true);
-      if (editingDataSource) {
-        await dataSourceService.update(editingDataSource.id, {
-          ...dataSourceForm,
-          updatedAt: Timestamp.now(),
-        });
-        toast.success('Fuente de datos actualizada');
-      } else {
-        await dataSourceService.create({
-          ...dataSourceForm,
-          workspaceId: selectedWorkspace?.id || '',
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        });
-        toast.success('Fuente de datos creada');
-      }
-      closeDataSourceModal();
-      loadDataSources();
-    } catch (error) {
-      toast.error('Error al guardar');
-      console.error(error);
-    } finally {
-      setSavingDataSource(false);
-    }
-  };
-
-
-  const addVariable = () => {
-    setDataSourceForm((prev) => ({
-      ...prev,
-      variables: [...prev.variables, createEmptyVariable()],
-    }));
-  };
-
-  const removeVariable = (index: number) => {
-    setDataSourceForm((prev) => ({
-      ...prev,
-      variables: prev.variables.filter((_, i) => i !== index),
-    }));
-  };
-
-  const updateVariable = (index: number, updates: Partial<DataSourceVariable>) => {
-    setDataSourceForm((prev) => ({
-      ...prev,
-      variables: prev.variables.map((v, i) =>
-        i === index ? { ...v, ...updates } : v
       ),
     }));
   };
@@ -598,102 +461,115 @@ export function Settings() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Pipelines de HubSpot</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Pipeline de HubSpot</h2>
                 <p className="text-sm text-gray-500">
-                  Configura los pipelines que usarás para métricas y reportes
+                  Configura el pipeline que usas para medir métricas del equipo de ventas
                 </p>
               </div>
-              <Button onClick={() => openPipelineModal()}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nuevo Pipeline
-              </Button>
+              {pipelines.length === 0 && (
+                <Button onClick={() => openPipelineModal()}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Configurar pipeline
+                </Button>
+              )}
             </div>
 
+            {/* Loading */}
+            {loading && (
+              <div className="text-center py-12 text-gray-400">Cargando…</div>
+            )}
+
             {/* Empty state */}
-            {pipelines.length === 0 && !loading && (
+            {!loading && pipelines.length === 0 && (
               <Card className="p-12 text-center">
                 <GitBranch className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Sin pipelines configurados
+                  Pipeline no configurado
                 </h3>
                 <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                  Agrega los pipelines de HubSpot que usarás para medir métricas de tus equipos.
-                  Puedes tener múltiples pipelines para diferentes productos, canales o áreas.
+                  Conecta tu pipeline de HubSpot para que las fuentes de datos puedan leer métricas de solicitudes y ventas.
                 </p>
                 <Button onClick={() => openPipelineModal()}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Agregar primer pipeline
+                  Configurar pipeline
                 </Button>
               </Card>
             )}
 
-            {/* Pipelines grid */}
-            {pipelines.length > 0 && (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {pipelines.map((pipeline) => (
-                  <Card
-                    key={pipeline.id}
-                    className="p-5 hover:shadow-lg transition-shadow cursor-pointer relative overflow-hidden"
-                    onClick={() => openPipelineModal(pipeline)}
-                  >
-                    {/* Color bar */}
-                    <div
-                      className="absolute top-0 left-0 right-0 h-1"
-                      style={{ backgroundColor: pipeline.color }}
-                    />
-
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-2xl">{pipeline.icon}</span>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{pipeline.name}</h3>
-                          <p className="text-xs text-gray-500 font-mono">
-                            {pipeline.hubspotPipelineId}
-                          </p>
-                        </div>
+            {/* Single pipeline config card */}
+            {!loading && pipelines.length > 0 && (() => {
+              const pipeline = pipelines[0];
+              const cat = (c: string) => STAGE_CATEGORIES.find((s) => s.value === c);
+              return (
+                <Card className="p-6 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: pipeline.color }} />
+                  <div className="flex items-start justify-between mb-5">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-3xl">{pipeline.icon}</span>
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900">{pipeline.name}</h3>
+                        <p className="text-xs text-gray-500 font-mono mt-0.5">{pipeline.hubspotPipelineId}</p>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deletePipeline(pipeline.id);
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
+                    <Button variant="ghost" onClick={() => openPipelineModal(pipeline)}>
+                      <Edit2 className="w-4 h-4 mr-1.5" />
+                      Editar
+                    </Button>
+                  </div>
 
-                    {pipeline.description && (
-                      <p className="text-sm text-gray-500 mt-2 line-clamp-2">
-                        {pipeline.description}
-                      </p>
+                  {pipeline.description && (
+                    <p className="text-sm text-gray-500 mb-5">{pipeline.description}</p>
+                  )}
+
+                  {/* Stages */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                      Etapas del pipeline ({pipeline.stages.length})
+                    </p>
+                    {pipeline.stages.length === 0 ? (
+                      <p className="text-sm text-gray-400">Sin etapas configuradas. Edita el pipeline para agregar etapas.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pipeline.stages.map((stage) => {
+                          const category = cat(stage.category);
+                          return (
+                            <div key={stage.id} className="flex items-center space-x-3 py-2 px-3 bg-gray-50 rounded-lg">
+                              <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${category?.color || 'bg-gray-300'}`} />
+                              <span className="text-sm text-gray-800 font-medium flex-1">{stage.name || '(sin nombre)'}</span>
+                              <span className="text-xs text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                                {category?.label || stage.category}
+                              </span>
+                              <code className="text-xs text-gray-400 font-mono">{stage.id}</code>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
+                  </div>
 
-                    {/* Stages preview */}
-                    <div className="mt-4 flex items-center space-x-1">
-                      {pipeline.stages.slice(0, 5).map((stage) => {
-                        const cat = STAGE_CATEGORIES.find((c) => c.value === stage.category);
-                        return (
-                          <div
-                            key={stage.id}
-                            className={`w-2 h-2 rounded-full ${cat?.color || 'bg-gray-300'}`}
-                            title={stage.name}
-                          />
-                        );
-                      })}
-                      {pipeline.stages.length > 5 && (
-                        <span className="text-xs text-gray-400">
-                          +{pipeline.stages.length - 5}
-                        </span>
-                      )}
-                      {pipeline.stages.length === 0 && (
-                        <span className="text-xs text-gray-400">Sin etapas configuradas</span>
-                      )}
+                  {/* HubSpot properties */}
+                  {(pipeline.realSalesProperty || pipeline.amountProperty) && (
+                    <div className="mt-5 pt-5 border-t border-gray-100">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Propiedades HubSpot</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {pipeline.realSalesProperty && (
+                          <div className="text-sm">
+                            <span className="text-gray-500 text-xs">Propiedad de ventas reales</span>
+                            <code className="block mt-0.5 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{pipeline.realSalesProperty}</code>
+                          </div>
+                        )}
+                        {pipeline.amountProperty && (
+                          <div className="text-sm">
+                            <span className="text-gray-500 text-xs">Propiedad de monto</span>
+                            <code className="block mt-0.5 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{pipeline.amountProperty}</code>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </Card>
-                ))}
-              </div>
-            )}
+                  )}
+                </Card>
+              );
+            })()}
           </div>
         )}
 
@@ -792,25 +668,9 @@ export function Settings() {
           </div>
         )}
 
-        {/* ============== Fuentes de Datos — banner de acceso rápido ============== */}
-        {activeTab === 'pipelines' && (
-          <button
-            onClick={() => navigate('/data-sources')}
-            className="w-full flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 bg-blue-200 rounded-lg flex items-center justify-center">
-                <Database className="w-5 h-5 text-blue-700" />
-              </div>
-              <div className="text-left">
-                <p className="text-sm font-semibold text-blue-800">Fuentes de Datos</p>
-                <p className="text-xs text-blue-600">
-                  Gestiona las métricas y variables que alimentan tus campañas
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-blue-500" />
-          </button>
+        {/* ==================== DATASOURCES TAB ==================== */}
+        {activeTab === 'datasources' && (
+          <DataSources embedded onNavigateToPipelines={() => setActiveTab('pipelines')} />
         )}
 
         {/* ==================== INTEGRATIONS TAB ==================== */}
@@ -1536,274 +1396,6 @@ export function Settings() {
               <Button variant="ghost" onClick={closePropModal}>Cancelar</Button>
               <Button onClick={saveProp} disabled={savingProp}>
                 {savingProp ? 'Guardando…' : editingProp ? 'Actualizar' : 'Crear propiedad'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== DATA SOURCE MODAL ==================== */}
-      {isDataSourceModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {editingDataSource ? 'Editar Fuente de Datos' : 'Nueva Fuente de Datos'}
-                </h2>
-                <button onClick={closeDataSourceModal} className="text-gray-400 hover:text-gray-500">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Name and description */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre de la fuente *
-                </label>
-                <input
-                  type="text"
-                  value={dataSourceForm.name}
-                  onChange={(e) =>
-                    setDataSourceForm((prev) => ({ ...prev, name: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                  placeholder="Ej: Métricas Semanales Kioscos"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Descripción (opcional)
-                </label>
-                <textarea
-                  value={dataSourceForm.description || ''}
-                  onChange={(e) =>
-                    setDataSourceForm((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                  placeholder="Describe qué datos proporciona esta fuente"
-                />
-              </div>
-
-              {/* Type selector */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tipo de fuente
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {DATA_SOURCE_TYPES.map((type) => (
-                    <button
-                      key={type.value}
-                      type="button"
-                      onClick={() =>
-                        setDataSourceForm((prev) => ({ ...prev, type: type.value }))
-                      }
-                      className={`flex items-center space-x-3 p-3 rounded-lg border-2 text-left transition-colors ${
-                        dataSourceForm.type === type.value
-                          ? 'border-slack-purple bg-slack-purple/5'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <type.icon className="w-5 h-5 text-gray-600" />
-                      <div>
-                        <div className="font-medium text-sm text-gray-900">{type.label}</div>
-                        <div className="text-xs text-gray-500">{type.description}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Type-specific configuration */}
-              {dataSourceForm.type === 'pipeline' && (
-                <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Pipeline
-                    </label>
-                    <select
-                      value={dataSourceForm.pipelineId || ''}
-                      onChange={(e) =>
-                        setDataSourceForm((prev) => ({ ...prev, pipelineId: e.target.value }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                    >
-                      <option value="">Seleccionar pipeline...</option>
-                      {pipelines.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.icon} {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    {pipelines.length === 0 && (
-                      <p className="mt-1 text-xs text-yellow-600">
-                        Primero configura un pipeline en la pestaña de Pipelines
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Categorías de etapas a incluir
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {STAGE_CATEGORIES.filter((c) => c.value !== 'lost').map((cat) => {
-                        const isSelected = dataSourceForm.stageCategories?.includes(cat.value);
-                        return (
-                          <button
-                            key={cat.value}
-                            type="button"
-                            onClick={() => {
-                              const current = dataSourceForm.stageCategories || [];
-                              const updated = isSelected
-                                ? current.filter((c) => c !== cat.value)
-                                : [...current, cat.value];
-                              setDataSourceForm((prev) => ({
-                                ...prev,
-                                stageCategories: updated,
-                              }));
-                            }}
-                            className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                              isSelected
-                                ? 'bg-slack-purple text-white'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            <div className={`w-2 h-2 rounded-full ${cat.color}`} />
-                            <span>{cat.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Date range */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Rango de fechas
-                </label>
-                <select
-                  value={dataSourceForm.dateRange}
-                  onChange={(e) =>
-                    setDataSourceForm((prev) => ({
-                      ...prev,
-                      dateRange: e.target.value as DateRangeType,
-                    }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                >
-                  {DATE_RANGES.map((dr) => (
-                    <option key={dr.value} value={dr.value}>
-                      {dr.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Variables */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Variables que exporta
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addVariable}
-                    className="text-sm text-slack-purple hover:text-slack-purple/80"
-                  >
-                    + Agregar variable
-                  </button>
-                </div>
-
-                {dataSourceForm.variables.length === 0 && (
-                  <div className="text-center py-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                    <Sparkles className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">
-                      Define las variables que estarán disponibles en los mensajes
-                    </p>
-                    <button
-                      type="button"
-                      onClick={addVariable}
-                      className="mt-2 text-sm text-slack-purple hover:underline"
-                    >
-                      + Agregar variable
-                    </button>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  {dataSourceForm.variables.map((variable, index) => (
-                    <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
-                      <input
-                        type="text"
-                        value={variable.key}
-                        onChange={(e) => updateVariable(index, { key: e.target.value })}
-                        className="w-32 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                        placeholder="clave"
-                      />
-                      <input
-                        type="text"
-                        value={variable.label}
-                        onChange={(e) => updateVariable(index, { label: e.target.value })}
-                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                        placeholder="Etiqueta para mostrar"
-                      />
-                      <select
-                        value={variable.type}
-                        onChange={(e) =>
-                          updateVariable(index, {
-                            type: e.target.value as DataSourceVariable['type'],
-                          })
-                        }
-                        className="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      >
-                        <option value="number">Número</option>
-                        <option value="currency">Moneda</option>
-                        <option value="percentage">Porcentaje</option>
-                        <option value="text">Texto</option>
-                        <option value="date">Fecha</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => removeVariable(index)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                {dataSourceForm.variables.length > 0 && (
-                  <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                    <p className="text-xs text-blue-700">
-                      <strong>Uso en mensajes:</strong>{' '}
-                      {dataSourceForm.variables
-                        .filter((v) => v.key)
-                        .map((v) => `{{${v.key}}}`)
-                        .join(', ') || 'Define claves para ver el preview'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3 sticky bottom-0 bg-white">
-              <Button variant="ghost" onClick={closeDataSourceModal}>
-                Cancelar
-              </Button>
-              <Button onClick={saveDataSource} disabled={savingDataSource}>
-                {savingDataSource
-                  ? 'Guardando...'
-                  : editingDataSource
-                  ? 'Actualizar'
-                  : 'Crear Fuente'}
               </Button>
             </div>
           </div>
