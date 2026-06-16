@@ -1054,7 +1054,7 @@ function StepData({
             </div>
 
             {hasAnyData && (
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+              <div className="grid grid-cols-1 gap-3 pt-2 border-t border-gray-100">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Período</label>
                   <select
@@ -1067,16 +1067,6 @@ function StepData({
                     <option value="current_month">Mes actual</option>
                     <option value="today">Solo hoy</option>
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Pipeline (ID HubSpot)</label>
-                  <input
-                    type="text"
-                    value={dataConfig.customPipeline || ''}
-                    onChange={(e) => updateData({ customPipeline: e.target.value || undefined })}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
-                    placeholder="Default del usuario"
-                  />
                 </div>
               </div>
             )}
@@ -1126,6 +1116,44 @@ function StepMessage({
   // null = pestaña global; string = slotId
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [showAI, setShowAI] = useState(campaign.aiConfig?.enabled || false);
+  const [customTone, setCustomTone] = useState(false);
+
+  const TONE_PRESETS = [
+    {
+      id: 'motivador',
+      label: 'Motivador',
+      emoji: '🔥',
+      description: 'Energético y positivo, impulsa a la acción',
+      prompt: 'Eres un coach de ventas motivador. Reescribe el mensaje en español, tono energético y positivo, máximo 2 emojis, un párrafo corto. Preserva todos los números exactos.',
+    },
+    {
+      id: 'formal',
+      label: 'Formal',
+      emoji: '📋',
+      description: 'Profesional, sin emojis, directo al grano',
+      prompt: 'Eres un gerente de ventas profesional. Reescribe el mensaje en español formal, sin emojis, directo y conciso. Preserva todos los números exactos.',
+    },
+    {
+      id: 'urgente',
+      label: 'Urgente',
+      emoji: '🚨',
+      description: 'Enfatiza urgencia y acción inmediata',
+      prompt: 'Eres un líder de ventas que comunica urgencia. Reescribe el mensaje en español destacando la importancia de actuar ahora, máximo 2 emojis de alerta. Preserva todos los números exactos.',
+    },
+    {
+      id: 'amigable',
+      label: 'Amigable',
+      emoji: '😊',
+      description: 'Casual e informal, como de un compañero',
+      prompt: 'Eres un colega de ventas amigable. Reescribe el mensaje en español casual e informal, como si hablaras con un amigo del trabajo, máximo 2 emojis. Preserva todos los números exactos.',
+    },
+  ];
+
+  const LENGTH_PRESETS = [
+    { label: 'Corto', tokens: 60, desc: '~30 palabras' },
+    { label: 'Normal', tokens: 150, desc: '~80 palabras' },
+    { label: 'Largo', tokens: 300, desc: '~150 palabras' },
+  ];
 
   const availableVars = getAvailableVariables(campaign.dataConfig);
 
@@ -1380,7 +1408,7 @@ function StepMessage({
         />
       </div>
 
-      {/* AI Configuration (collapsible) */}
+      {/* AI Configuration */}
       <div className="border border-gray-200 rounded-lg overflow-hidden">
         <button
           type="button"
@@ -1394,45 +1422,144 @@ function StepMessage({
           <div className="flex items-center space-x-2">
             <Sparkles className={`w-5 h-5 ${aiConfig.enabled ? 'text-purple-600' : 'text-gray-400'}`} />
             <span className="font-medium text-sm text-gray-900">Inteligencia Artificial</span>
-            {aiConfig.enabled && <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">Activada</span>}
+            {aiConfig.enabled && (
+              <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">Activada</span>
+            )}
           </div>
           {showAI ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
         </button>
 
         {showAI && (
-          <div className="p-4 space-y-4 border-t border-gray-200">
-            <p className="text-sm text-gray-500">La IA puede reescribir o generar mensajes para que cada envío suene diferente y natural.</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              {([
-                { value: 'rewrite' as const, label: 'Reescribir', desc: 'Varía el tono manteniendo tu plantilla' },
-                { value: 'generate' as const, label: 'Generar', desc: 'Crea un mensaje nuevo desde el contexto' },
-              ]).map((mode) => (
-                <button key={mode.value} type="button" onClick={() => updateAI({ rewriteMode: mode.value })}
-                  className={`p-3 rounded-lg border-2 text-left transition-all ${aiConfig.rewriteMode === mode.value ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'}`}>
-                  <div className="font-medium text-sm">{mode.label}</div>
-                  <div className="text-xs text-gray-500 mt-1">{mode.desc}</div>
-                </button>
-              ))}
+          <div className="p-4 space-y-5 border-t border-gray-200">
+            {/* Explanation */}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <p className="text-sm text-purple-800">
+                La IA toma tu mensaje con las variables ya reemplazadas (ej: "Juan tiene 5 solicitudes") y lo reformula antes de enviarlo.{' '}
+                <strong>Los números siempre se preservan exactos — solo cambia la redacción.</strong>{' '}
+                Úsala si envías esta campaña frecuentemente y no quieres que suene idéntica cada vez.
+              </p>
             </div>
 
+            {/* Mode */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Instrucciones para la IA</label>
-              <textarea value={aiConfig.systemPrompt || ''} onChange={(e) => updateAI({ systemPrompt: e.target.value })} rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
-                placeholder="Ej: Eres un coach de ventas motivador que escribe mensajes cortos en español..." />
+              <label className="block text-sm font-medium text-gray-700 mb-2">¿Qué hace la IA con tu mensaje?</label>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  {
+                    value: 'rewrite' as const,
+                    label: '✏️ Reformular',
+                    desc: 'Varía cómo dice lo mismo. Tú controlas el contenido, la IA cambia las palabras.',
+                  },
+                  {
+                    value: 'generate' as const,
+                    label: '✨ Crear nuevo',
+                    desc: 'Usa tu mensaje como inspiración y genera uno diferente. Más variedad, menos control.',
+                  },
+                ]).map((mode) => (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => updateAI({ rewriteMode: mode.value })}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      aiConfig.rewriteMode === mode.value
+                        ? 'border-slack-purple bg-slack-purple/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-medium text-sm text-gray-900">{mode.label}</div>
+                    <div className="text-xs text-gray-500 mt-1">{mode.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Temperatura ({aiConfig.temperature?.toFixed(1) || '0.7'})</label>
-                <input type="range" min={0} max={1} step={0.1} value={aiConfig.temperature || 0.7} onChange={(e) => updateAI({ temperature: parseFloat(e.target.value) })} className="w-full accent-slack-purple" />
-                <div className="flex justify-between text-xs text-gray-400"><span>Preciso</span><span>Creativo</span></div>
+            {/* Tone presets */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Tono del mensaje</label>
+              <div className="grid grid-cols-2 gap-2">
+                {TONE_PRESETS.map((preset) => {
+                  const isActive = !customTone && aiConfig.systemPrompt === preset.prompt;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setCustomTone(false);
+                        updateAI({ systemPrompt: preset.prompt });
+                      }}
+                      className={`flex items-start space-x-2 p-3 rounded-lg border-2 text-left transition-all ${
+                        isActive ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className="text-lg">{preset.emoji}</span>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{preset.label}</div>
+                        <div className="text-xs text-gray-500">{preset.description}</div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tokens máximos</label>
-                <input type="number" min={50} max={500} value={aiConfig.maxTokens || 120} onChange={(e) => updateAI({ maxTokens: parseInt(e.target.value) || 120 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm" />
+
+              {/* Custom tone toggle */}
+              <button
+                type="button"
+                onClick={() => setCustomTone(!customTone)}
+                className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                {customTone ? '← Usar un tono predefinido' : 'Personalizar instrucciones...'}
+              </button>
+              {customTone && (
+                <textarea
+                  value={aiConfig.systemPrompt || ''}
+                  onChange={(e) => updateAI({ systemPrompt: e.target.value })}
+                  rows={3}
+                  className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                  placeholder="Ej: Eres un coach de ventas motivador que escribe mensajes cortos en español..."
+                />
+              )}
+            </div>
+
+            {/* Variation (formerly Temperature) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Variación{' '}
+                <span className="text-xs text-gray-400 font-normal">— qué tan diferente al original</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.1}
+                value={aiConfig.temperature || 0.7}
+                onChange={(e) => updateAI({ temperature: parseFloat(e.target.value) })}
+                className="w-full accent-slack-purple"
+              />
+              <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                <span>Fiel a tu plantilla</span>
+                <span>Muy diferente cada vez</span>
+              </div>
+            </div>
+
+            {/* Length (formerly Max Tokens) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Longitud del mensaje</label>
+              <div className="grid grid-cols-3 gap-2">
+                {LENGTH_PRESETS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => updateAI({ maxTokens: opt.tokens })}
+                    className={`p-2.5 rounded-lg border-2 text-center transition-all ${
+                      aiConfig.maxTokens === opt.tokens
+                        ? 'border-slack-purple bg-slack-purple/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-sm font-medium text-gray-900">{opt.label}</div>
+                    <div className="text-xs text-gray-400">{opt.desc}</div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>

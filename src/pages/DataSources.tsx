@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Code2,
-  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -199,15 +198,19 @@ export function DataSources() {
       setForm({ ...ds, updatedAt: Timestamp.now() });
     } else if (template) {
       setEditingDs(null);
-      setForm({
+      const base = {
         ...createEmptyDataSource(selectedWorkspace?.id || ''),
         name: template.label,
         description: template.description,
         ...template.config,
-      });
+      };
+      if (pipelines.length === 1 && !base.pipelineId) base.pipelineId = pipelines[0].id;
+      setForm(base);
     } else {
       setEditingDs(null);
-      setForm(createEmptyDataSource(selectedWorkspace?.id || ''));
+      const base = createEmptyDataSource(selectedWorkspace?.id || '');
+      if (pipelines.length === 1) base.pipelineId = pipelines[0].id;
+      setForm(base);
     }
     setIsModalOpen(true);
   };
@@ -281,6 +284,13 @@ export function DataSources() {
   // ── Derived ──────────────────────────────────────────────────────────────
 
   const selectedPipeline = pipelines.find((p) => p.id === form.pipelineId);
+
+  useEffect(() => {
+    if (form.type !== 'pipeline') return;
+    const cats = form.stageCategories || [];
+    if (cats.length === 0) return;
+    setForm((prev) => ({ ...prev, variables: autoGenerateVariables(cats) }));
+  }, [form.stageCategories, form.type]);
 
   if (!selectedWorkspace) {
     return (
@@ -527,25 +537,12 @@ export function DataSources() {
                     <span>Configuración del Pipeline</span>
                   </h3>
 
-                  {/* Pipeline picker */}
+                  {/* Pipeline indicator */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Pipeline de HubSpot
                     </label>
-                    {pipelines.length > 0 ? (
-                      <select
-                        value={form.pipelineId || ''}
-                        onChange={(e) => setForm((p) => ({ ...p, pipelineId: e.target.value || undefined }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple bg-white"
-                      >
-                        <option value="">— Seleccionar pipeline —</option>
-                        {pipelines.map((pl) => (
-                          <option key={pl.id} value={pl.id}>
-                            {pl.icon} {pl.name} ({pl.hubspotPipelineId})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
+                    {pipelines.length === 0 ? (
                       <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                         No hay pipelines configurados.{' '}
                         <button
@@ -556,19 +553,32 @@ export function DataSources() {
                           Agregar en Configuración →
                         </button>
                       </div>
-                    )}
-                    {selectedPipeline && (
-                      <p className="text-xs text-gray-500 mt-1 flex items-center space-x-1">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedPipeline.color || '#6366f1' }} />
-                        <span>{selectedPipeline.stages.length} etapas configuradas</span>
-                      </p>
+                    ) : pipelines.length === 1 ? (
+                      <div className="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelines[0].color || '#6366f1' }} />
+                        <span className="font-medium">{pipelines[0].icon} {pipelines[0].name}</span>
+                        <span className="text-gray-400 text-xs ml-auto">Único pipeline</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={form.pipelineId || ''}
+                        onChange={(e) => setForm((p) => ({ ...p, pipelineId: e.target.value || undefined }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple bg-white"
+                      >
+                        <option value="">— Seleccionar pipeline —</option>
+                        {pipelines.map((pl) => (
+                          <option key={pl.id} value={pl.id}>
+                            {pl.icon} {pl.name}
+                          </option>
+                        ))}
+                      </select>
                     )}
                   </div>
 
                   {/* Stage categories */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      ¿Qué etapas contar?
+                      ¿Qué etapas contar? <span className="text-xs text-gray-400 font-normal">— las variables se generan automáticamente</span>
                     </label>
                     <div className="space-y-2">
                       {STAGE_CATEGORIES.map((cat) => {
@@ -599,17 +609,6 @@ export function DataSources() {
                     </div>
                   </div>
 
-                  {/* Auto-generate button */}
-                  {(form.stageCategories || []).length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleAutoGenerateVars}
-                      className="flex items-center space-x-2 text-sm text-slack-purple font-medium hover:underline"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Generar variables automáticamente</span>
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -663,16 +662,6 @@ export function DataSources() {
                     </p>
                   </div>
                   <div className="flex space-x-2">
-                    {form.type === 'pipeline' && (form.stageCategories || []).length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleAutoGenerateVars}
-                        className="flex items-center space-x-1 px-2 py-1 text-xs bg-slack-purple/10 text-slack-purple rounded-lg hover:bg-slack-purple/20"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Auto</span>
-                      </button>
-                    )}
                     <button
                       type="button"
                       onClick={addVariable}
@@ -688,7 +677,7 @@ export function DataSources() {
                   <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm">
                     <Code2 className="w-6 h-6 mx-auto mb-2 opacity-50" />
                     {form.type === 'pipeline' && (form.stageCategories || []).length > 0
-                      ? 'Haz clic en "Auto" para generar variables basadas en las etapas seleccionadas'
+                      ? 'Las variables se generarán automáticamente al seleccionar las etapas'
                       : 'Haz clic en "Agregar" para definir las variables que exporta esta fuente'}
                   </div>
                 ) : (
