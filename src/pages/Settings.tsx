@@ -104,6 +104,8 @@ const createEmptyPipeline = (workspaceId: string): Omit<Pipeline, 'id'> => ({
   color: '#6366f1',
   stages: [],
   countMetric: 'deals',
+  amountProperty: '',
+  realSalesProperty: '',
   isActive: true,
   createdAt: Timestamp.now(),
   updatedAt: Timestamp.now(),
@@ -252,6 +254,7 @@ export function Settings() {
         stages: pipeline.stages,
         countMetric: pipeline.countMetric,
         amountProperty: pipeline.amountProperty,
+        realSalesProperty: pipeline.realSalesProperty,
         isActive: pipeline.isActive,
         createdAt: pipeline.createdAt,
         updatedAt: Timestamp.now(),
@@ -1047,8 +1050,9 @@ export function Settings() {
                         type="text"
                         value={stage.id}
                         onChange={(e) => updateStage(index, { id: e.target.value })}
-                        className="w-32 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                        placeholder="stage_id"
+                        className="w-36 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+                        placeholder="ID en HubSpot"
+                        title="ID de la etapa en HubSpot (ej: 33823866)"
                       />
                       <select
                         value={stage.category}
@@ -1082,6 +1086,54 @@ export function Settings() {
                       <span className="text-xs text-gray-500">{cat.label}</span>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* HubSpot Properties */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                    Propiedades de HubSpot
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Campos específicos de tu cuenta de HubSpot que el sistema usa para calcular métricas.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Propiedad de ventas reales
+                  </label>
+                  <input
+                    type="text"
+                    value={pipelineForm.realSalesProperty || ''}
+                    onChange={(e) =>
+                      setPipelineForm((prev) => ({ ...prev, realSalesProperty: e.target.value || undefined }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                    placeholder="hs_v2_date_entered_XXXXXXXX"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    La propiedad <code className="bg-gray-100 px-1 rounded">hs_v2_date_entered_*</code> que indica que un deal fue desembolsado o cerrado como venta real. Si se deja vacío, usa <code className="bg-gray-100 px-1 rounded">hs_v2_date_entered_33823866</code> por defecto.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Propiedad de monto
+                  </label>
+                  <input
+                    type="text"
+                    value={pipelineForm.amountProperty || ''}
+                    onChange={(e) =>
+                      setPipelineForm((prev) => ({ ...prev, amountProperty: e.target.value || undefined }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                    placeholder="amount"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    La propiedad de HubSpot que contiene el monto del deal. Por defecto: <code className="bg-gray-100 px-1 rounded">amount</code>.
+                  </p>
                 </div>
               </div>
             </div>

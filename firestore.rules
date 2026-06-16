@@ -103,5 +103,21 @@ service cloud.firestore {
       allow read: if isViewer();
       allow write: if isAdmin();
     }
+
+    match /pipelines/{pipelineId} {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
+
+    match /data_sources/{dataSourceId} {
+      allow read: if isViewer();
+      allow create: if isEditor();
+      allow update, delete: if isEditor();
+    }
+
+    match /positions/{positionId} {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
   }
 }

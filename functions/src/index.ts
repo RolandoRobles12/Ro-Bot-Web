@@ -1248,6 +1248,14 @@ async function executeCampaign(
       // 5c. Build template variables
       const templateVars = buildTemplateVariables(recipient, metrics);
 
+      // Extract string variables from filter values (stored with __str__ prefix)
+      for (const [key, value] of Object.entries(metrics)) {
+        if (key.startsWith('__str__')) {
+          templateVars[key.replace('__str__', '')] = String(value);
+          delete metrics[key];
+        }
+      }
+
       // 5d. Replace variables in template
       let finalMessage = replaceTemplateVariables(selectedVariant.messageTemplate, templateVars);
 
@@ -1682,6 +1690,11 @@ async function resolveDataConfig(dataConfig: any): Promise<any> {
         if (advancedStageIds.length > 0) {
           resolved.customStages = advancedStageIds;
         }
+
+        // Carry over the pipeline's real sales property if configured
+        if (pl.realSalesProperty) {
+          resolved.resolvedRealSalesProperty = pl.realSalesProperty;
+        }
       }
     }
 
@@ -1696,14 +1709,12 @@ async function fetchRecipientMetrics(
   recipient: any,
   rawDataConfig: any,
   accessToken: string | null
-): Promise<Record<string, number>> {
+): Promise<Record<string, any>> {
   const dataConfig = await resolveDataConfig(rawDataConfig);
   if (!dataConfig || !accessToken || !recipient.hubspotOwnerId) {
     return {};
   }
 
-  const { startDate, endDate } = getWeekDateRange(dataConfig.dateRange || 'current_week');
-  const pipeline = dataConfig.customPipeline || recipient.pipeline || 'default';
   const ownerIds = [recipient.hubspotOwnerId];
 
   // Add promoter IDs for kioscos
@@ -1711,10 +1722,138 @@ async function fetchRecipientMetrics(
     ownerIds.push(...recipient.promotores);
   }
 
-  const metrics: Record<string, number> = {};
+  const metrics: Record<string, any> = {};
+
+  // ── Multi-DataSource path ──────────────────────────────────────────────
+  if (rawDataConfig?.dataSources && rawDataConfig.dataSources.length > 0) {
+    for (const ref of rawDataConfig.dataSources) {
+      const prefix = ref.variablePrefix || '';
+
+      const dsDoc = await db.collection('data_sources').doc(ref.dataSourceId).get();
+      if (!dsDoc.exists) continue;
+      const ds = dsDoc.data()!;
+
+      let dsResolvedPipeline = recipient.pipeline || 'default';
+      let dsRealSalesProp = 'hs_v2_date_entered_33823866';
+      let dsAdvancedStageIds: string[] = [];
+      let dsFetchSolicitudes = false;
+      let dsFetchVentasAvanzadas = false;
+      let dsFetchVentasReales = false;
+
+      if (ds.pipelineId) {
+        const plDoc = await db.collection('pipelines').doc(ds.pipelineId).get();
+        if (plDoc.exists) {
+          const pl = plDoc.data()!;
+          dsResolvedPipeline = pl.hubspotPipelineId || dsResolvedPipeline;
+          if (pl.realSalesProperty) dsRealSalesProp = pl.realSalesProperty;
+
+          const cats: string[] = ds.stageCategories || [];
+          dsFetchSolicitudes = cats.includes('new');
+          dsFetchVentasAvanzadas = cats.includes('advanced');
+          dsFetchVentasReales = cats.includes('won');
+
+          dsAdvancedStageIds = (pl.stages || [])
+            .filter((s: any) => ['advanced', 'won'].includes(s.category) && cats.includes(s.category))
+            .map((s: any) => s.id);
+        }
+      }
+
+      const additionalFilters = (ds.additionalFilters || []).map((f: any) => ({
+        propertyName: f.propertyName,
+        operator: f.operator,
+        value: f.value,
+      }));
+
+      const additionalProps = (ds.additionalFilters || [])
+        .map((f: any) => f.propertyName)
+        .filter(Boolean);
+
+      const drMap: Record<string, string> = {
+        today: 'today', this_week: 'current_week', last_week: 'last_week',
+        this_month: 'current_month', last_month: 'last_week',
+      };
+      const dsDateRange = drMap[ds.dateRange] || 'current_week';
+      const { startDate: dsStart, endDate: dsEnd } = getWeekDateRange(dsDateRange);
+
+      const dsDeals = await queryHubSpotDeals(
+        accessToken,
+        [
+          { propertyName: 'createdate', operator: 'GTE', value: dsStart },
+          { propertyName: 'createdate', operator: 'LTE', value: dsEnd },
+          { propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds },
+          { propertyName: 'pipeline', operator: 'EQ', value: dsResolvedPipeline },
+          ...additionalFilters,
+        ],
+        ['amount', 'dealstage', dsRealSalesProp, ...additionalProps]
+      );
+
+      if (dsFetchSolicitudes) {
+        metrics[`${prefix}solicitudes`] = dsDeals.length;
+        const metaSol = recipient.metaSolicitudes || 0;
+        if (metaSol > 0) {
+          metrics[`${prefix}meta_solicitudes`] = metaSol;
+          metrics[`${prefix}pct_solicitudes`] = Math.round((dsDeals.length / metaSol) * 100);
+        }
+      }
+
+      if (dsFetchVentasAvanzadas) {
+        const advStages = dsAdvancedStageIds.length ? dsAdvancedStageIds
+          : (dsResolvedPipeline === '76732496'
+            ? ['146251806', '146251807', '150228300']
+            : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097']);
+        metrics[`${prefix}ventas_avanzadas`] = dsDeals.reduce((total: number, deal: any) => {
+          const amount = parseFloat(deal.properties.amount || '0');
+          return advStages.includes(deal.properties.dealstage) ? total + amount : total;
+        }, 0);
+        const metaV = recipient.metaVentas || 0;
+        if (metaV > 0) {
+          metrics[`${prefix}pct_ventas_avanzadas`] = Math.round((metrics[`${prefix}ventas_avanzadas`] / metaV) * 100);
+        }
+      }
+
+      if (dsFetchVentasReales) {
+        metrics[`${prefix}ventas`] = dsDeals.reduce((total: number, deal: any) => {
+          const amount = parseFloat(deal.properties.amount || '0');
+          const dateEntered = deal.properties[dsRealSalesProp];
+          if (dateEntered) {
+            const d = new Date(dateEntered);
+            if (d >= new Date(dsStart) && d <= new Date(dsEnd)) return total + amount;
+          }
+          return total;
+        }, 0);
+        const metaV = recipient.metaVentas || 0;
+        if (metaV > 0) {
+          metrics[`${prefix}meta_ventas`] = metaV;
+          metrics[`${prefix}pct_ventas`] = Math.round((metrics[`${prefix}ventas`] / metaV) * 100);
+        }
+      }
+
+      // Store filter values as string vars with __str__ sentinel
+      for (const f of ds.additionalFilters || []) {
+        if (f.propertyName && f.value) {
+          metrics[`__str__${prefix}${f.propertyName}`] = f.value;
+        }
+      }
+    }
+
+    // Days remaining (always available)
+    const dayOfWeek = new Date().getDay();
+    metrics.dias_restantes = dayOfWeek === 0 ? 0 : 6 - dayOfWeek;
+
+    return metrics;
+  }
+
+  const { startDate, endDate } = getWeekDateRange(dataConfig.dateRange || 'current_week');
+  const pipeline = dataConfig.customPipeline || recipient.pipeline || 'default';
 
   try {
     if (dataConfig.fetchSolicitudes || dataConfig.fetchVentasAvanzadas || dataConfig.fetchVentasReales) {
+      // Determine real sales property: pipeline config > user override > hardcoded default
+      const realSalesProp: string =
+        dataConfig.resolvedRealSalesProperty ||
+        recipient.realSalesProperty ||
+        'hs_v2_date_entered_33823866';
+
       const deals = await queryHubSpotDeals(
         accessToken,
         [
@@ -1723,7 +1862,7 @@ async function fetchRecipientMetrics(
           { propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds },
           { propertyName: 'pipeline', operator: 'EQ', value: pipeline },
         ],
-        ['amount', 'dealstage', 'hs_v2_date_entered_33823866']
+        ['amount', 'dealstage', realSalesProp]
       );
 
       if (dataConfig.fetchSolicitudes) {
@@ -1747,8 +1886,6 @@ async function fetchRecipientMetrics(
       }
 
       if (dataConfig.fetchVentasReales) {
-        // Propiedad configurable por usuario; default al standard de Aviva
-        const realSalesProp: string = recipient.realSalesProperty || 'hs_v2_date_entered_33823866';
         metrics.ventas = deals.reduce((total: number, deal: any) => {
           const amount = parseFloat(deal.properties.amount || '0');
           const dateEntered = deal.properties[realSalesProp];
@@ -1808,7 +1945,7 @@ async function fetchRecipientMetrics(
 
 function selectMessageVariant(
   variants: any[],
-  metrics: Record<string, number>
+  metrics: Record<string, any>
 ): any | null {
   if (!variants || variants.length === 0) return null;
 
@@ -1861,7 +1998,7 @@ function selectMessageVariant(
 
 function buildTemplateVariables(
   recipient: any,
-  metrics: Record<string, number>
+  metrics: Record<string, any>
 ): Record<string, any> {
   const categoryNames: CategoriaNombre[] = [
     'critico', 'alerta', 'preocupante', 'rezagado', 'en_linea', 'destacado', 'excepcional',
@@ -1875,23 +2012,27 @@ function buildTemplateVariables(
   const catNum = metrics._categoria_num;
   const catName = catNum !== undefined ? categoryNames[catNum] : 'en_linea';
 
-  return {
-    nombre: recipient.nombre || '',
-    tipo_usuario: recipient.tipo || '',
-    solicitudes: metrics.solicitudes || 0,
-    meta_solicitudes: metrics.meta_solicitudes || 0,
-    pct_solicitudes: metrics.pct_solicitudes || 0,
-    ventas: metrics.ventas || 0,
-    meta_ventas: metrics.meta_ventas || 0,
-    pct_ventas: metrics.pct_ventas || 0,
-    ventas_avanzadas: metrics.ventas_avanzadas || 0,
-    pct_ventas_avanzadas: metrics.pct_ventas_avanzadas || 0,
-    categoria: categoryLabels[catName] || 'En linea',
-    dias_restantes: metrics.dias_restantes || 0,
-    progreso_esperado: metrics.progreso_esperado || 0,
-    videollamadas_dia: metrics.videollamadas_dia || 0,
-    videollamadas_semana: metrics.videollamadas_semana || 0,
-  };
+  // Start with all metrics (includes prefixed multi-DS vars)
+  const result: Record<string, any> = { ...metrics };
+
+  // Override / set standard vars
+  result.nombre = recipient.nombre || '';
+  result.tipo_usuario = recipient.tipo || '';
+  result.solicitudes = metrics.solicitudes ?? 0;
+  result.meta_solicitudes = metrics.meta_solicitudes ?? 0;
+  result.pct_solicitudes = metrics.pct_solicitudes ?? 0;
+  result.ventas = metrics.ventas ?? 0;
+  result.meta_ventas = metrics.meta_ventas ?? 0;
+  result.pct_ventas = metrics.pct_ventas ?? 0;
+  result.ventas_avanzadas = metrics.ventas_avanzadas ?? 0;
+  result.pct_ventas_avanzadas = metrics.pct_ventas_avanzadas ?? 0;
+  result.categoria = categoryLabels[catName] || 'En linea';
+  result.dias_restantes = metrics.dias_restantes ?? 0;
+  result.progreso_esperado = metrics.progreso_esperado ?? 0;
+  result.videollamadas_dia = metrics.videollamadas_dia ?? 0;
+  result.videollamadas_semana = metrics.videollamadas_semana ?? 0;
+
+  return result;
 }
 
 // ==========================================================================

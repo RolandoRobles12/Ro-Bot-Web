@@ -315,6 +315,7 @@ export interface Pipeline {
   // Metrics configuration
   countMetric: 'deals' | 'amount';// What to count: number of deals or total amount
   amountProperty?: string;        // HubSpot property for deal amount (default: amount)
+  realSalesProperty?: string;     // hs_v2_date_entered_* property for real/disbursed sales
   // Status
   isActive: boolean;
   createdAt: Timestamp;
@@ -357,6 +358,12 @@ export type DateRangeType =
   | 'this_year'
   | 'custom';
 
+export interface DataSourceFilter {
+  propertyName: string;  // HubSpot property name (e.g., "producto")
+  operator: 'EQ' | 'NEQ' | 'CONTAINS';
+  value: string;
+}
+
 /**
  * A reusable data source configuration.
  * Data sources define where to get data and what variables they provide.
@@ -372,6 +379,7 @@ export interface DataSource {
   // For type='pipeline'
   pipelineId?: string;            // Reference to Pipeline.id
   stageCategories?: StageCategory[]; // Which stage categories to include in count
+  additionalFilters?: DataSourceFilter[];  // Extra HubSpot filters for this source
 
   // For type='property'
   hubspotProperties?: string[];   // List of HubSpot property names to fetch
@@ -609,6 +617,11 @@ export interface CampaignAIConfig {
   // 'generate' = AI creates message from scratch using template as context
 }
 
+export interface CampaignDataSourceRef {
+  dataSourceId: string;
+  variablePrefix?: string;  // e.g., "cp_" → {{cp_solicitudes}}, {{cp_ventas}}
+}
+
 /**
  * Data source configuration for a campaign.
  * Defines what HubSpot metrics to fetch for each recipient.
@@ -622,10 +635,12 @@ export interface CampaignDataConfig {
   dateRange: 'current_week' | 'last_week' | 'current_month' | 'today';
   customPipeline?: string;            // Override pipeline ID (legacy)
   customStages?: string[];            // Override advanced stage IDs (legacy)
+  resolvedRealSalesProperty?: string; // Resolved from Pipeline config at execution time
   // Fuente de datos configurada en /data-sources.
   // Cuando se especifica, el motor de campañas usa el pipeline/stages/dateRange
   // definidos en el DataSource entity en lugar de los valores de arriba.
-  dataSourceId?: string;
+  dataSourceId?: string;                    // Legacy: single DataSource (backwards compat)
+  dataSources?: CampaignDataSourceRef[];    // New: multiple DataSources with optional prefixes
 }
 
 /**
