@@ -315,6 +315,7 @@ export interface Pipeline {
   // Metrics configuration
   countMetric: 'deals' | 'amount';// What to count: number of deals or total amount
   amountProperty?: string;        // HubSpot property for deal amount (default: amount)
+  realSalesProperty?: string;     // hs_v2_date_entered_* property for real/disbursed sales
   // Status
   isActive: boolean;
   createdAt: Timestamp;
@@ -622,6 +623,7 @@ export interface CampaignDataConfig {
   dateRange: 'current_week' | 'last_week' | 'current_month' | 'today';
   customPipeline?: string;            // Override pipeline ID (legacy)
   customStages?: string[];            // Override advanced stage IDs (legacy)
+  resolvedRealSalesProperty?: string; // Resolved from Pipeline config at execution time
   // Fuente de datos configurada en /data-sources.
   // Cuando se especifica, el motor de campañas usa el pipeline/stages/dateRange
   // definidos en el DataSource entity en lugar de los valores de arriba.

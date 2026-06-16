@@ -1682,6 +1682,11 @@ async function resolveDataConfig(dataConfig: any): Promise<any> {
         if (advancedStageIds.length > 0) {
           resolved.customStages = advancedStageIds;
         }
+
+        // Carry over the pipeline's real sales property if configured
+        if (pl.realSalesProperty) {
+          resolved.resolvedRealSalesProperty = pl.realSalesProperty;
+        }
       }
     }
 
@@ -1715,6 +1720,12 @@ async function fetchRecipientMetrics(
 
   try {
     if (dataConfig.fetchSolicitudes || dataConfig.fetchVentasAvanzadas || dataConfig.fetchVentasReales) {
+      // Determine real sales property: pipeline config > user override > hardcoded default
+      const realSalesProp: string =
+        dataConfig.resolvedRealSalesProperty ||
+        recipient.realSalesProperty ||
+        'hs_v2_date_entered_33823866';
+
       const deals = await queryHubSpotDeals(
         accessToken,
         [
@@ -1723,7 +1734,7 @@ async function fetchRecipientMetrics(
           { propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds },
           { propertyName: 'pipeline', operator: 'EQ', value: pipeline },
         ],
-        ['amount', 'dealstage', 'hs_v2_date_entered_33823866']
+        ['amount', 'dealstage', realSalesProp]
       );
 
       if (dataConfig.fetchSolicitudes) {
@@ -1747,8 +1758,6 @@ async function fetchRecipientMetrics(
       }
 
       if (dataConfig.fetchVentasReales) {
-        // Propiedad configurable por usuario; default al standard de Aviva
-        const realSalesProp: string = recipient.realSalesProperty || 'hs_v2_date_entered_33823866';
         metrics.ventas = deals.reduce((total: number, deal: any) => {
           const amount = parseFloat(deal.properties.amount || '0');
           const dateEntered = deal.properties[realSalesProp];
