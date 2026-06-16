@@ -17,7 +17,7 @@ import { Timestamp } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/appStore';
-import { dataSourceService, pipelineService } from '@/services/firestore';
+import { dataSourceService, pipelineService, customPropertyService } from '@/services/firestore';
 import type {
   DataSource,
   DataSourceVariable,
@@ -26,6 +26,7 @@ import type {
   DateRangeType,
   StageCategory,
   Pipeline,
+  CustomHubSpotProperty,
 } from '@/types';
 
 // ==========================================================================
@@ -167,6 +168,7 @@ export function DataSources() {
   const { selectedWorkspace } = useAppStore();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [customProperties, setCustomProperties] = useState<CustomHubSpotProperty[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -184,12 +186,14 @@ export function DataSources() {
     if (!selectedWorkspace?.id) return;
     setLoading(true);
     try {
-      const [ds, pl] = await Promise.all([
+      const [ds, pl, props] = await Promise.all([
         dataSourceService.getByWorkspace(selectedWorkspace.id),
         pipelineService.getByWorkspace(selectedWorkspace.id),
+        customPropertyService.getByWorkspace(selectedWorkspace.id),
       ]);
       setDataSources(ds);
       setPipelines(pl);
+      setCustomProperties(props);
     } catch {
       toast.error('Error al cargar fuentes de datos');
     } finally {
@@ -234,12 +238,18 @@ export function DataSources() {
     }
     setSaving(true);
     try {
+      // Normalize filters: resolve __custom__ entries and drop incomplete rows
+      const normalizedFilters = (form.additionalFilters || [])
+        .map(f => f.propertyName === '__custom__' ? { ...f, propertyName: (f as any)._customName || '' } : f)
+        .filter(f => f.propertyName && f.value);
+      const formToSave = { ...form, additionalFilters: normalizedFilters };
+
       if (editingDs) {
-        await dataSourceService.update(editingDs.id, { ...form, updatedAt: Timestamp.now() });
+        await dataSourceService.update(editingDs.id, { ...formToSave, updatedAt: Timestamp.now() });
         toast.success('Fuente de datos actualizada');
       } else {
         await dataSourceService.create({
-          ...form,
+          ...formToSave,
           workspaceId: selectedWorkspace?.id || '',
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
@@ -640,49 +650,109 @@ export function DataSources() {
                     </button>
                   </div>
 
+                  {customProperties.length === 0 && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
+                      Para usar el catálogo de propiedades, primero{' '}
+                      <button type="button" onClick={() => { closeModal(); navigate('/settings'); }} className="underline font-medium">
+                        registra tus propiedades en Configuración
+                      </button>
+                      . Por ahora puedes usar "Propiedad custom (texto libre)".
+                    </div>
+                  )}
+
                   {(form.additionalFilters || []).length === 0 ? (
                     <div className="text-center py-4 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-xs">
                       Sin filtros — se incluyen todos los deals del pipeline
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {(form.additionalFilters || []).map((f, i) => (
-                        <div key={i} className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            value={f.propertyName}
-                            onChange={(e) => updateFilter(i, { propertyName: e.target.value })}
-                            placeholder="nombre_propiedad"
-                            className="w-36 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
-                          />
-                          <select
-                            value={f.operator}
-                            onChange={(e) => updateFilter(i, { operator: e.target.value as DataSourceFilter['operator'] })}
-                            className="w-32 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
-                          >
-                            {FILTER_OPERATORS.map((op) => (
-                              <option key={op.value} value={op.value}>{op.label}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            value={f.value}
-                            onChange={(e) => updateFilter(i, { value: e.target.value })}
-                            placeholder="valor"
-                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
-                          />
-                          <button onClick={() => removeFilter(i)} className="p-1.5 text-gray-400 hover:text-red-500">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(form.additionalFilters || []).filter(f => f.propertyName).map((f, i) => (
-                          <span key={i} className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded text-xs font-mono">
-                            {`{{${f.propertyName}}}`} = &quot;{f.value}&quot;
-                          </span>
-                        ))}
-                      </div>
+                      {(form.additionalFilters || []).map((f, i) => {
+                        const catalogProp = customProperties.find(p => p.name === f.propertyName);
+                        return (
+                          <div key={i} className="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center space-x-2">
+                              {/* Property selector */}
+                              <div className="flex-1">
+                                <select
+                                  value={f.propertyName}
+                                  onChange={(e) => updateFilter(i, { propertyName: e.target.value, value: '' })}
+                                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                                >
+                                  <option value="">— Seleccionar propiedad —</option>
+                                  {customProperties.map(p => (
+                                    <option key={p.id} value={p.name}>{p.label}</option>
+                                  ))}
+                                  <option value="__custom__">Propiedad custom (texto libre)…</option>
+                                </select>
+                              </div>
+
+                              {/* Operator */}
+                              <select
+                                value={f.operator}
+                                onChange={(e) => updateFilter(i, { operator: e.target.value as DataSourceFilter['operator'] })}
+                                className="w-32 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                              >
+                                {FILTER_OPERATORS.map(op => (
+                                  <option key={op.value} value={op.value}>{op.label}</option>
+                                ))}
+                              </select>
+
+                              <button onClick={() => removeFilter(i)} className="p-1.5 text-gray-400 hover:text-red-500 flex-shrink-0">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Custom property name input (only when __custom__ selected) */}
+                            {f.propertyName === '__custom__' && (
+                              <input
+                                type="text"
+                                value={(f as any)._customName || ''}
+                                onChange={(e) => updateFilter(i, { _customName: e.target.value, propertyName: e.target.value || '__custom__' } as any)}
+                                placeholder="Nombre interno en HubSpot"
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
+                              />
+                            )}
+
+                            {/* Value input */}
+                            {f.propertyName && f.propertyName !== '__custom__' && (
+                              <div>
+                                {catalogProp?.type === 'enum' && catalogProp.enumOptions?.length ? (
+                                  <select
+                                    value={f.value}
+                                    onChange={(e) => updateFilter(i, { value: e.target.value })}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                                  >
+                                    <option value="">— Seleccionar valor —</option>
+                                    {catalogProp.enumOptions.map(opt => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={f.value}
+                                    onChange={(e) => updateFilter(i, { value: e.target.value })}
+                                    placeholder={catalogProp?.type === 'number' ? 'Valor numérico' : `Valor de ${catalogProp?.label || f.propertyName}`}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {/* Preview of resulting variable */}
+                            {f.propertyName && f.propertyName !== '__custom__' && f.value && (
+                              <div className="flex items-center space-x-1.5 text-xs text-gray-500">
+                                <span>Variable generada:</span>
+                                <code className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded font-mono">
+                                  {`{{${f.propertyName}}}`}
+                                </code>
+                                <span>= "{f.value}"</span>
+                                {catalogProp && <span className="text-gray-400">· {catalogProp.label}</span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

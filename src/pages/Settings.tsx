@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Copy,
   ChevronRight,
+  Edit2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Timestamp } from 'firebase/firestore';
@@ -32,6 +33,7 @@ import {
   workspaceSettingsService,
   pipelineService,
   dataSourceService,
+  customPropertyService,
 } from '@/services/firestore';
 import type {
   SlackWorkspace,
@@ -43,12 +45,14 @@ import type {
   DataSourceVariable,
   DataSourceType,
   DateRangeType,
+  CustomHubSpotProperty,
 } from '@/types';
 
-type Tab = 'pipelines' | 'integrations' | 'general' | 'notifications';
+type Tab = 'pipelines' | 'properties' | 'integrations' | 'general' | 'notifications';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'pipelines', label: 'Pipelines', icon: GitBranch, description: 'Configura tus pipelines de HubSpot' },
+  { id: 'properties', label: 'Propiedades', icon: Layers, description: 'Propiedades custom de HubSpot' },
   { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI y Slack' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, description: 'Alertas y avisos' },
@@ -161,6 +165,24 @@ export function Settings() {
   const [dataSourceForm, setDataSourceForm] = useState<Omit<DataSource, 'id'>>(createEmptyDataSource(''));
   const [savingDataSource, setSavingDataSource] = useState(false);
 
+  // Custom properties state
+  const [customProperties, setCustomProperties] = useState<CustomHubSpotProperty[]>([]);
+  const [isPropModalOpen, setIsPropModalOpen] = useState(false);
+  const [editingProp, setEditingProp] = useState<CustomHubSpotProperty | null>(null);
+  const [savingProp, setSavingProp] = useState(false);
+  const [propForm, setPropForm] = useState<Omit<CustomHubSpotProperty, 'id'>>({
+    workspaceId: '',
+    name: '',
+    label: '',
+    category: 'deal',
+    type: 'string',
+    enumOptions: [],
+    description: '',
+    isActive: true,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+
   // Settings form state
   const [settingsForm, setSettingsForm] = useState({
     timezone: 'America/Mexico_City',
@@ -183,6 +205,7 @@ export function Settings() {
       loadPipelines();
       loadDataSources();
       loadSettings();
+      customPropertyService.getByWorkspace(selectedWorkspace.id).then(setCustomProperties).catch(console.error);
     }
   }, [selectedWorkspace?.id]);
 
@@ -402,6 +425,83 @@ export function Settings() {
     }));
   };
 
+  // ==================== CUSTOM PROPERTY HANDLERS ====================
+
+  const openPropModal = (prop?: CustomHubSpotProperty) => {
+    if (prop) {
+      setEditingProp(prop);
+      setPropForm({ ...prop, updatedAt: Timestamp.now() });
+    } else {
+      setEditingProp(null);
+      setPropForm({
+        workspaceId: selectedWorkspace?.id || '',
+        name: '',
+        label: '',
+        category: 'deal',
+        type: 'string',
+        enumOptions: [],
+        description: '',
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      });
+    }
+    setIsPropModalOpen(true);
+  };
+
+  const closePropModal = () => {
+    setIsPropModalOpen(false);
+    setEditingProp(null);
+  };
+
+  const saveProp = async () => {
+    if (!propForm.name.trim() || !propForm.label.trim()) {
+      toast.error('Nombre y etiqueta son requeridos');
+      return;
+    }
+    setSavingProp(true);
+    try {
+      if (editingProp) {
+        await customPropertyService.update(editingProp.id, { ...propForm, updatedAt: Timestamp.now() });
+        toast.success('Propiedad actualizada');
+      } else {
+        await customPropertyService.create({
+          ...propForm,
+          workspaceId: selectedWorkspace?.id || '',
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+        toast.success('Propiedad creada');
+      }
+      closePropModal();
+      customPropertyService.getByWorkspace(selectedWorkspace?.id || '').then(setCustomProperties);
+    } catch {
+      toast.error('Error al guardar');
+    } finally {
+      setSavingProp(false);
+    }
+  };
+
+  const deleteProp = async (propId: string) => {
+    if (!confirm('¿Eliminar esta propiedad?')) return;
+    try {
+      await customPropertyService.delete(propId);
+      toast.success('Propiedad eliminada');
+      customPropertyService.getByWorkspace(selectedWorkspace?.id || '').then(setCustomProperties);
+    } catch {
+      toast.error('Error al eliminar');
+    }
+  };
+
+  const addEnumOption = (val: string) => {
+    if (!val.trim() || (propForm.enumOptions || []).includes(val.trim())) return;
+    setPropForm(p => ({ ...p, enumOptions: [...(p.enumOptions || []), val.trim()] }));
+  };
+
+  const removeEnumOption = (opt: string) => {
+    setPropForm(p => ({ ...p, enumOptions: (p.enumOptions || []).filter(o => o !== opt) }));
+  };
+
   // ==================== SETTINGS HANDLERS ====================
 
   const saveSettings = async () => {
@@ -589,6 +689,95 @@ export function Settings() {
                     </div>
                   </Card>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==================== PROPERTIES TAB ==================== */}
+        {activeTab === 'properties' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Propiedades de HubSpot</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Registra las propiedades custom de tu cuenta de HubSpot. Se usan como filtros en las fuentes de datos y como variables en los mensajes.
+                </p>
+              </div>
+              <Button onClick={() => openPropModal()} className="flex items-center space-x-2">
+                <Plus className="w-4 h-4" />
+                <span>Nueva Propiedad</span>
+              </Button>
+            </div>
+
+            {customProperties.length === 0 ? (
+              <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+                <Layers className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 font-medium">Sin propiedades registradas</p>
+                <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
+                  Agrega las propiedades custom de HubSpot que usas para filtrar deals (ej: producto, canal, fuente).
+                </p>
+                <button onClick={() => openPropModal()} className="mt-4 text-sm text-slack-purple hover:underline">
+                  + Agregar primera propiedad
+                </button>
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Propiedad</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre en HubSpot</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Valores válidos</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {customProperties.map((prop) => (
+                      <tr key={prop.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{prop.label}</div>
+                          {prop.description && <div className="text-xs text-gray-400 mt-0.5">{prop.description}</div>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <code className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{prop.name}</code>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            prop.type === 'enum' ? 'bg-purple-100 text-purple-700' :
+                            prop.type === 'number' ? 'bg-blue-100 text-blue-700' :
+                            prop.type === 'date' ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {prop.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {prop.type === 'enum' && prop.enumOptions?.length ? (
+                            <div className="flex flex-wrap gap-1">
+                              {prop.enumOptions.map(opt => (
+                                <span key={opt} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">{opt}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center space-x-1 justify-end">
+                            <button onClick={() => openPropModal(prop)} className="p-1.5 text-gray-400 hover:text-gray-700 rounded">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => deleteProp(prop.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -1144,6 +1333,162 @@ export function Settings() {
               </Button>
               <Button onClick={savePipeline} disabled={savingPipeline}>
                 {savingPipeline ? 'Guardando...' : editingPipeline ? 'Actualizar' : 'Crear Pipeline'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* PROPERTY MODAL                                                */}
+      {/* ============================================================ */}
+      {isPropModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {editingProp ? 'Editar propiedad' : 'Nueva propiedad'}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">Propiedad custom de HubSpot</p>
+              </div>
+              <button onClick={closePropModal} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Label */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Etiqueta <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={propForm.label}
+                  onChange={(e) => setPropForm(p => ({ ...p, label: e.target.value }))}
+                  placeholder="Ej: Producto"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
+                />
+                <p className="text-xs text-gray-400 mt-1">Nombre que verás en la app</p>
+              </div>
+
+              {/* HubSpot internal name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre en HubSpot <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={propForm.name}
+                  onChange={(e) => setPropForm(p => ({ ...p, name: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
+                  placeholder="Ej: producto"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  El nombre interno de la propiedad en HubSpot (sin espacios, minúsculas)
+                </p>
+              </div>
+
+              {/* Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de dato</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { value: 'string', label: 'Texto', desc: 'Valores de texto libre' },
+                    { value: 'number', label: 'Número', desc: 'Valores numéricos' },
+                    { value: 'date', label: 'Fecha', desc: 'Fechas y timestamps' },
+                    { value: 'boolean', label: 'Sí / No', desc: 'Verdadero o falso' },
+                    { value: 'enum', label: 'Lista de opciones', desc: 'Valores predefinidos' },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setPropForm(p => ({ ...p, type: t.value, enumOptions: t.value === 'enum' ? (p.enumOptions || []) : [] }))}
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${
+                        propForm.type === t.value ? 'border-slack-purple bg-slack-purple/5' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="text-sm font-medium text-gray-900">{t.label}</div>
+                      <div className="text-xs text-gray-500">{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Enum options */}
+              {propForm.type === 'enum' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Valores válidos
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        placeholder="Agregar valor (Enter para confirmar)"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addEnumOption((e.target as HTMLInputElement).value);
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
+                          addEnumOption(input.value);
+                          input.value = '';
+                        }}
+                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                    {(propForm.enumOptions || []).length > 0 && (
+                      <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg">
+                        {(propForm.enumOptions || []).map((opt) => (
+                          <span
+                            key={opt}
+                            className="inline-flex items-center space-x-1 px-2 py-1 bg-white border border-gray-200 rounded-lg text-sm"
+                          >
+                            <span>{opt}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeEnumOption(opt)}
+                              className="text-gray-400 hover:text-red-500 ml-1"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-400">
+                      Al usar esta propiedad como filtro, los valores disponibles serán este listado.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                <input
+                  type="text"
+                  value={propForm.description || ''}
+                  onChange={(e) => setPropForm(p => ({ ...p, description: e.target.value }))}
+                  placeholder="¿Para qué se usa esta propiedad?"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+              <Button variant="ghost" onClick={closePropModal}>Cancelar</Button>
+              <Button onClick={saveProp} disabled={savingProp}>
+                {savingProp ? 'Guardando…' : editingProp ? 'Actualizar' : 'Crear propiedad'}
               </Button>
             </div>
           </div>
