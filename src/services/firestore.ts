@@ -402,31 +402,22 @@ export const positionService = {
 };
 
 // Sales User services
-// Los sales_users viven en el proyecto externo de Firebase (usersDb).
-// Las escrituras solo se permiten para actualizar metas/config propia de Ro-Bot.
+// Los sales_users viven en el proyecto externo de Firebase. El frontend no
+// tiene permisos directos — se accede via Cloud Function (admin SDK proxy).
 export const salesUserService = {
   get: async (userId: string): Promise<SalesUser | null> => {
     const snap = await getDoc(doc(usersDb, 'sales_users', userId));
     return snap.exists() ? ({ id: snap.id, ...snap.data() } as SalesUser) : null;
   },
-  getByWorkspace: (workspaceId: string) => {
-    const q = query(
-      collection(usersDb, 'sales_users'),
-      where('workspaceId', '==', workspaceId),
-      where('isActive', '==', true),
-      orderBy('nombre', 'asc')
-    );
-    return getDocs(q).then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() } as SalesUser)));
+  getByWorkspace: async (workspaceId: string): Promise<SalesUser[]> => {
+    const { listSalesUsers } = await import('./cloudFunctions');
+    const result = await listSalesUsers({ workspaceId });
+    return (result.data.users || []) as SalesUser[];
   },
-  getByType: (workspaceId: string, tipo: string) => {
-    const q = query(
-      collection(usersDb, 'sales_users'),
-      where('workspaceId', '==', workspaceId),
-      where('tipo', '==', tipo),
-      where('isActive', '==', true),
-      orderBy('nombre', 'asc')
-    );
-    return getDocs(q).then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() } as SalesUser)));
+  getByType: async (workspaceId: string, tipo: string): Promise<SalesUser[]> => {
+    const { listSalesUsers } = await import('./cloudFunctions');
+    const result = await listSalesUsers({ workspaceId, tipo });
+    return (result.data.users || []) as SalesUser[];
   },
   update: (userId: string, data: Partial<SalesUser>) =>
     updateDoc(doc(usersDb, 'sales_users', userId), { ...data, updatedAt: Timestamp.now() }),
