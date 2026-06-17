@@ -905,7 +905,7 @@ export const listSalesUsers = functions.https.onCall(
       if (tipo) q = q.where('tipo', '==', tipo);
 
       const snapshot = await q.get();
-      const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const users = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       return { users };
     } catch (err: any) {
       if (err instanceof functions.https.HttpsError) throw err;
