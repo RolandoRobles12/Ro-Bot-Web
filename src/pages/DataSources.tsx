@@ -55,6 +55,12 @@ const FILTER_OPERATORS: { value: DataSourceFilter['operator']; label: string }[]
   { value: 'CONTAINS', label: 'contiene' },
 ];
 
+const DATE_FILTER_OPERATORS: { value: DataSourceFilter['operator']; label: string }[] = [
+  { value: 'EQ', label: 'en este día' },
+  { value: 'GTE', label: 'desde (inclusive)' },
+  { value: 'LTE', label: 'hasta (inclusive)' },
+];
+
 const TYPE_ICONS: Record<DataSourceType, string> = {
   pipeline: '📊',
   property: '🔍',
@@ -667,13 +673,13 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                                 </select>
                               </div>
 
-                              {/* Operator */}
+                              {/* Operator — date types get a different set of operators */}
                               <select
                                 value={f.operator}
                                 onChange={(e) => updateFilter(i, { operator: e.target.value as DataSourceFilter['operator'] })}
-                                className="w-32 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                                className="w-36 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
                               >
-                                {FILTER_OPERATORS.map(op => (
+                                {(catalogProp?.type === 'date' ? DATE_FILTER_OPERATORS : FILTER_OPERATORS).map(op => (
                                   <option key={op.value} value={op.value}>{op.label}</option>
                                 ))}
                               </select>

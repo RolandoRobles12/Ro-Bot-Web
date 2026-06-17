@@ -1817,11 +1817,28 @@ async function fetchRecipientMetrics(
         }
       }
 
-      const additionalFilters = (ds.additionalFilters || []).map((f: any) => ({
-        propertyName: f.propertyName,
-        operator: f.operator,
-        value: f.value,
-      }));
+      // Expand date filters: YYYY-MM-DD values need ISO strings for HubSpot API.
+      // EQ on a date field becomes a GTE+LTE pair covering the full day (00:00–23:59 UTC).
+      const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+      const additionalFilters: any[] = [];
+      for (const f of (ds.additionalFilters || []) as any[]) {
+        if (DATE_RE.test(f.value)) {
+          const dayStart = new Date(`${f.value}T00:00:00.000Z`).toISOString();
+          const dayEnd   = new Date(`${f.value}T23:59:59.999Z`).toISOString();
+          if (f.operator === 'EQ') {
+            additionalFilters.push({ propertyName: f.propertyName, operator: 'GTE', value: dayStart });
+            additionalFilters.push({ propertyName: f.propertyName, operator: 'LTE', value: dayEnd });
+          } else if (f.operator === 'GTE') {
+            additionalFilters.push({ propertyName: f.propertyName, operator: 'GTE', value: dayStart });
+          } else if (f.operator === 'LTE') {
+            additionalFilters.push({ propertyName: f.propertyName, operator: 'LTE', value: dayEnd });
+          } else {
+            additionalFilters.push({ propertyName: f.propertyName, operator: f.operator, value: dayStart });
+          }
+        } else {
+          additionalFilters.push({ propertyName: f.propertyName, operator: f.operator, value: f.value });
+        }
+      }
 
       const additionalProps = (ds.additionalFilters || [])
         .map((f: any) => f.propertyName)

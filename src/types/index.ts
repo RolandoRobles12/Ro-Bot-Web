@@ -366,9 +366,9 @@ export type DateRangeType =
 
 export interface DataSourceFilter {
   propertyName: string;  // HubSpot property name (e.g., "producto")
-  operator: 'EQ' | 'NEQ' | 'CONTAINS';
-  value: string;
-  displayValue?: string;  // Human-readable label for the selected enum value
+  operator: 'EQ' | 'NEQ' | 'CONTAINS' | 'GTE' | 'LTE';
+  value: string;         // For date fields: YYYY-MM-DD (backend converts to ISO range)
+  displayValue?: string; // Human-readable label for the selected enum value
 }
 
 /**
