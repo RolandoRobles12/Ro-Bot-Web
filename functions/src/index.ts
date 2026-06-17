@@ -882,6 +882,40 @@ export const processScheduledMessages = functions.pubsub
   });
 
 // ==========================================================================
+// =                       LIST SALES USERS (proxy)                        =
+// ==========================================================================
+// El frontend no puede leer el proyecto externo directamente (reglas de
+// Firestore). Esta función actúa de proxy usando el admin SDK.
+
+export const listSalesUsers = functions.https.onCall(
+  async (data: { workspaceId: string; tipo?: string }) => {
+    try {
+      const { workspaceId, tipo } = data;
+      if (!workspaceId) {
+        throw new functions.https.HttpsError('invalid-argument', 'workspaceId requerido');
+      }
+
+      const extDb = getExternalDb();
+      let q: any = extDb
+        .collection('sales_users')
+        .where('workspaceId', '==', workspaceId)
+        .where('isActive', '==', true)
+        .orderBy('nombre', 'asc');
+
+      if (tipo) q = q.where('tipo', '==', tipo);
+
+      const snapshot = await q.get();
+      const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { users };
+    } catch (err: any) {
+      if (err instanceof functions.https.HttpsError) throw err;
+      console.error('listSalesUsers error:', err);
+      throw new functions.https.HttpsError('internal', err.message || 'Error interno');
+    }
+  }
+);
+
+// ==========================================================================
 // =                     CALCULATE SALES METRICS                            =
 // ==========================================================================
 

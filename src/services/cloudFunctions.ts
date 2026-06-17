@@ -46,6 +46,14 @@ export const getHubSpotPipelineStages = httpsCallable<
 /**
  * Calculate sales metrics for a user from HubSpot.
  */
+/**
+ * List sales users from the external Firebase project (proxy via admin SDK).
+ */
+export const listSalesUsers = httpsCallable<
+  { workspaceId: string; tipo?: string },
+  { users: any[] }
+>(functions, 'listSalesUsers');
+
 export const calculateSalesMetrics = httpsCallable<
   {
     salesUserId: string;
