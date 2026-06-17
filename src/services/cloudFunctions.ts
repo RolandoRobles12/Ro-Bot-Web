@@ -58,9 +58,27 @@ export const agentBuildCampaign = httpsCallable<
   {
     messages: { role: string; content: string }[];
     workspaceId: string;
+    confirming?: boolean;
   },
   {
     message: string;
+    plan?: {
+      summary: string;
+      dataSource?: {
+        name: string;
+        pipelineName: string;
+        stageNames?: string[];
+        filterByOwner: boolean;
+        dateRange: string;
+      };
+      campaign?: {
+        name: string;
+        messageTemplate: string;
+        schedules: { daysOfWeek: number[]; time: string; label?: string }[];
+        recipientType: string;
+        salesUserTypes?: string[];
+      };
+    };
     created?: {
       dataSource?: { id: string; name: string; availableVariables: string[] };
       campaign?: { id: string; name: string };

@@ -2527,6 +2527,7 @@ export const getHubSpotPipelineStages = functions.https.onCall(
   }
 );
 
+
 // ==========================================================================
 // =                        AGENT BUILDER (AI)                              =
 // ==========================================================================
@@ -2535,30 +2536,26 @@ export const agentBuildCampaign = functions.https.onCall(
   async (data: {
     messages: { role: string; content: string }[];
     workspaceId: string;
+    confirming?: boolean;
   }) => {
-    const { messages, workspaceId } = data;
+    const { messages, workspaceId, confirming = false } = data;
     if (!workspaceId) {
       throw new functions.https.HttpsError('invalid-argument', 'workspaceId requerido');
     }
 
-    // Load everything in parallel: API key, workspace context, memories
-    const [settingsSnap, pipelinesSnap, dataSourcesSnap, hubspotPropsSnap, customPropsSnap, memoriesSnap] = await Promise.all([
+    // Load workspace context + API key in parallel
+    const [settingsSnap, pipelinesSnap, dataSourcesSnap, hubspotPropsSnap, customPropsSnap, usersSnap, memoriesSnap] = await Promise.all([
       db.collection('workspace_settings').where('workspaceId', '==', workspaceId).limit(1).get(),
       db.collection('pipelines').where('workspaceId', '==', workspaceId).get(),
       db.collection('data_sources').where('workspaceId', '==', workspaceId).get(),
       db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).where('isActive', '==', true).get(),
       db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
-      db.collection('agent_memory')
-        .where('workspaceId', '==', workspaceId)
-        .orderBy('createdAt', 'desc')
-        .limit(8)
-        .get(),
+      getExternalDb().collection('sales_users').where('workspaceId', '==', workspaceId).get(),
+      db.collection('agent_memory').where('workspaceId', '==', workspaceId).orderBy('createdAt', 'desc').limit(6).get(),
     ]);
 
     let apiKey = '';
-    if (!settingsSnap.empty) {
-      apiKey = settingsSnap.docs[0].data().openaiApiKey || '';
-    }
+    if (!settingsSnap.empty) apiKey = settingsSnap.docs[0].data().openaiApiKey || '';
     if (!apiKey) apiKey = functions.config().openai?.api_key || '';
     if (!apiKey) {
       throw new functions.https.HttpsError(
@@ -2567,108 +2564,121 @@ export const agentBuildCampaign = functions.https.onCall(
       );
     }
 
-    // Build workspace context snapshot for the system prompt
+    // ── Workspace context for system prompt ──────────────────────────────────
+
     const pipelineContext = pipelinesSnap.docs.map((d: any) => {
       const p = d.data();
-      const stages = (p.stages || []).map((s: any) => `  - ${s.name} (id: ${s.id}) → variable: {{${toSlug(s.name)}}}`).join('\n');
-      return `### Pipeline: "${p.name}" (id: ${d.id})\nEtapas:\n${stages || '  (sin etapas)'}`;
-    }).join('\n\n');
+      const stages = (p.stages || []).map((s: any) =>
+        `    · "${s.name}"  id=${s.id}  →  variable en mensaje: {{${toSlug(s.name)}}}`
+      ).join('\n');
+      return `  • Pipeline "${p.name}"  (id Firestore: ${d.id})\n${stages || '    (sin etapas configuradas)'}`;
+    }).join('\n\n') || '  (no hay pipelines configurados)';
 
     const dataSourceContext = dataSourcesSnap.docs.length > 0
       ? dataSourcesSnap.docs.map((d: any) => {
           const ds = d.data();
           const vars = (ds.variables || []).map((v: any) => `{{${v.key}}}`).join(', ');
-          return `- "${ds.name}" (id: ${d.id}) → variables: ${vars}`;
+          return `  • "${ds.name}"  id=${d.id}  período=${ds.dateRange || 'current_week'}  vars: ${vars}`;
         }).join('\n')
-      : '(ninguna todavía)';
+      : '  (ninguna todavía)';
 
-    // HubSpot properties configured in the workspace
-    const hubspotPropsContext = hubspotPropsSnap.docs.length > 0
-      ? hubspotPropsSnap.docs.map((d: any) => {
-          const p = d.data();
-          const opts = p.type === 'enum' && p.enumOptions?.length
-            ? ` | opciones: ${p.enumOptions.map((o: any) => typeof o === 'string' ? o : `${o.value} (${o.label})`).join(', ')}`
-            : '';
-          return `- ${p.name} | label: "${p.label}" | tipo: ${p.type} | categoría: ${p.category}${opts}`;
+    // Properties: use descriptive format so the bot understands how to use them in filters
+    const allPropsLines: string[] = [];
+    hubspotPropsSnap.docs.forEach((d: any) => {
+      const p = d.data();
+      const opts = p.type === 'enum' && p.enumOptions?.length
+        ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
+        : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}  colección=hubspot_properties${opts}`);
+    });
+    customPropsSnap.docs.forEach((d: any) => {
+      const p = d.data();
+      const opts = p.type === 'enum' && p.enumOptions?.length
+        ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
+        : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}  colección=custom_properties${opts}`);
+    });
+    const propertiesContext = allPropsLines.length > 0 ? allPropsLines.join('\n') : '  (ninguna configurada)';
+
+    const usersContext = usersSnap.docs.length > 0
+      ? usersSnap.docs.map((d: any) => {
+          const u = d.data();
+          return `  • "${u.nombre || u.name || d.id}"  tipo=${u.tipo || u.type || '?'}  id=${d.id}`;
         }).join('\n')
-      : '(ninguna configurada)';
+      : '  (no se encontraron usuarios)';
 
-    // Custom properties catalog (used in DataSource additional filters)
-    const customPropsContext = customPropsSnap.docs.length > 0
-      ? customPropsSnap.docs.map((d: any) => {
-          const p = d.data();
-          const opts = p.type === 'enum' && p.enumOptions?.length
-            ? ` | opciones: ${p.enumOptions.map((o: any) => typeof o === 'string' ? o : `${o.value} (${o.label})`).join(', ')}`
-            : '';
-          return `- ${p.name} | label: "${p.label}" | tipo: ${p.type}${opts}`;
-        }).join('\n')
-      : '(ninguna configurada)';
-
-    // Build memory context from past successful interactions
     const memoryContext = memoriesSnap.docs.length > 0
-      ? '\n\n## Ejemplos de campañas creadas anteriormente en este workspace\nÚsalos como referencia de estilo y estructura:\n' +
+      ? '\n\n## Ejemplos de campañas creadas anteriormente\n' +
         memoriesSnap.docs.map((d: any) => {
           const m = d.data();
-          return `- Solicitud: "${m.userRequest}"\n  Creó: ${JSON.stringify(m.created)}`;
+          return `  • Solicitud: "${m.userRequest}"\n    Resultado: ${JSON.stringify(m.created)}`;
         }).join('\n')
       : '';
 
-    const systemPrompt = `Eres el asistente de Ro-Bot, una plataforma que automatiza mensajes de Slack basados en datos de HubSpot CRM.
+    const systemPrompt = `Eres el asistente del Constructor IA de Ro-Bot, una plataforma que automatiza mensajes de Slack basados en datos de HubSpot CRM.
 
-Tu trabajo: ayudar a crear Fuentes de Datos (DataSources) y Campañas de mensajes mediante conversación natural. Conoces la plataforma a la perfección y actúas directamente — no pidas confirmación antes de crear, solo hazlo.
+## Tu rol
+Ayudar a crear Fuentes de Datos (DataSources) y Campañas de mensajes mediante conversación natural.
+NUNCA crees nada sin antes llamar a showPlan y recibir confirmación del usuario.
+Cuando el usuario diga "Confirmado" o similar, procede a crear.
 
-## Plataforma Ro-Bot — Referencia completa
+## Conceptos de la plataforma
 
 ### DataSource (Fuente de Datos)
-Conecta con un pipeline de HubSpot y define qué etapas trackear para un período dado.
-Variables generadas automáticamente:
-- {{solicitudes}} — siempre incluida: total de deals creados/ingresados en el período
-- {{nombre_etapa_slug}} — una por cada etapa seleccionada (el nombre se convierte a minúsculas sin tildes ni espacios: "En Proceso" → {{en_proceso}}, "Aprobado" → {{aprobado}})
-- filterByOwner: true = solo deals asignados al vendedor que recibe el mensaje (default, casi siempre correcto)
-- dateRange: 'today' (datos del día), 'current_week' (semana en curso), 'current_month' (mes en curso)
+- Se conecta a un pipeline de HubSpot y trackea etapas específicas
+- Variables generadas automáticamente (disponibles en el mensaje):
+    {{solicitudes}}  →  total de deals creados en el período (siempre incluido)
+    {{slug_etapa}}   →  una variable por etapa (nombre en minúsculas sin tildes ni espacios)
+    Ejemplo: etapa "En Proceso" → {{en_proceso}}, "Aprobado" → {{aprobado}}
+- filterByOwner: true = solo deals cuyo dueño (hubspot_owner_id) es el vendedor destinatario
+- dateRange: "today" | "current_week" | "current_month"
+- additionalFilters: filtros extra por propiedades de HubSpot (ver sección Propiedades)
 
 ### Campaign (Campaña)
-Envía mensajes de Slack según un horario. Se crea como borrador (isActive: false) para que el usuario la revise.
-- messageTemplate: plantilla con {{variables}}. Siempre disponible: {{nombre}} (nombre del destinatario)
-- scheduleSlots: días de semana (0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb) + hora HH:mm
+- Envía mensajes de Slack según un horario
+- Se crea como BORRADOR (inactiva) — el usuario la activa cuando quiera
+- messageTemplate: plantilla con {{variables}}. Siempre disponible: {{nombre}}
+- scheduleSlots: días semana (0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb) + hora HH:mm
 - recipientType:
-  - 'sales_user_type': todos los vendedores de los tipos indicados (kiosco/atn/ba/alianza)
-  - 'channel': canal de Slack específico
+    "sales_user_type" → por tipo de vendedor: kiosco | atn | ba | alianza
+    "channel" → canal de Slack específico
 - Zona horaria: America/Mexico_City
 
 ## Estado actual del workspace
 
 ### Pipelines configurados
-${pipelineContext || '(no hay pipelines configurados)'}
+${pipelineContext}
 
 ### Fuentes de datos existentes
 ${dataSourceContext}
 
-### Propiedades de HubSpot configuradas en el workspace
-Estas son las propiedades de deals disponibles para filtros adicionales en DataSources:
-${hubspotPropsContext}
+### Propiedades de HubSpot disponibles para filtros
+IMPORTANTE: Usa nombre_interno al crear filtros, no la etiqueta.
+Para filtros de fecha (tipo=date): el valor va en formato YYYY-MM-DD, el sistema lo convierte a ISO automáticamente.
+Para filtros de enum: usa el valor exacto de las opciones listadas abajo.
+${propertiesContext}
 
-### Catálogo de propiedades custom (filtros avanzados en DataSources)
-${customPropsContext}
+### Vendedores del workspace
+${usersContext}
 ${memoryContext}
 
-## Tu flujo de trabajo
-1. Si el usuario quiere crear algo nuevo: llama a listPipelines si ya no tienes los IDs exactos
-2. Crea el DataSource primero (recibirás los IDs y variables exactas disponibles)
-3. Usa esas variables para construir el messageTemplate de la Campaign
-4. Crea la Campaign con el dataSourceId recibido
-5. Confirma lo creado con un resumen breve y amigable
+## Flujo obligatorio
+1. Recopila la información necesaria (pipeline, horario, destinatarios, mensaje)
+2. Si no tienes los IDs exactos del pipeline, llama a listPipelines
+3. Llama a showPlan con el plan estructurado → espera confirmación
+4. Cuando el usuario confirme, llama createDataSource → luego createCampaign
+5. Confirma lo creado con un resumen amigable
 
-Si el usuario solo hace preguntas, respóndelas directamente usando el contexto del workspace de arriba.
+Responde siempre en español. Sé directo, conciso y amigable.`;
 
-Responde siempre en español. Sé directo y amigable.`;
+    // ── Tool definitions ─────────────────────────────────────────────────────
 
     const tools = [
       {
         type: 'function',
         function: {
           name: 'listPipelines',
-          description: 'Lista los pipelines de HubSpot configurados en el workspace con sus etapas',
+          description: 'Lista los pipelines de HubSpot configurados en el workspace con sus etapas e IDs exactos',
           parameters: { type: 'object', properties: {} },
         },
       },
@@ -2676,7 +2686,7 @@ Responde siempre en español. Sé directo y amigable.`;
         type: 'function',
         function: {
           name: 'listDataSources',
-          description: 'Lista las fuentes de datos existentes en el workspace',
+          description: 'Lista las fuentes de datos existentes en el workspace con sus variables',
           parameters: { type: 'object', properties: {} },
         },
       },
@@ -2684,34 +2694,73 @@ Responde siempre en español. Sé directo y amigable.`;
         type: 'function',
         function: {
           name: 'listProperties',
-          description: 'Lista todas las propiedades de HubSpot configuradas en el workspace (para usar en filtros adicionales de DataSources)',
+          description: 'Lista todas las propiedades de HubSpot configuradas (para usar en filtros adicionales de DataSources)',
           parameters: { type: 'object', properties: {} },
         },
       },
       {
         type: 'function',
         function: {
-          name: 'createDataSource',
-          description: 'Crea una nueva fuente de datos de pipeline. Devuelve id y variables disponibles.',
+          name: 'showPlan',
+          description: 'Muestra el plan estructurado al usuario ANTES de crear nada. SIEMPRE llama esta herramienta primero. El sistema pausará la ejecución hasta que el usuario confirme.',
           parameters: {
             type: 'object',
             properties: {
-              name: { type: 'string', description: 'Nombre descriptivo para la fuente de datos' },
-              pipelineId: { type: 'string', description: 'ID del pipeline de HubSpot' },
-              stageIds: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'IDs de etapas a trackear. Si está vacío, se incluyen todas las etapas.',
+              summary: { type: 'string', description: 'Resumen en lenguaje natural de qué se va a crear y por qué' },
+              dataSource: {
+                type: 'object',
+                description: 'DataSource que se va a crear',
+                properties: {
+                  name: { type: 'string' },
+                  pipelineName: { type: 'string', description: 'Nombre legible del pipeline' },
+                  pipelineId: { type: 'string', description: 'ID del pipeline en Firestore' },
+                  stageIds: { type: 'array', items: { type: 'string' } },
+                  stageNames: { type: 'array', items: { type: 'string' }, description: 'Nombres legibles de las etapas' },
+                  filterByOwner: { type: 'boolean' },
+                  dateRange: { type: 'string', enum: ['today', 'current_week', 'current_month'] },
+                },
+                required: ['name', 'pipelineName', 'pipelineId', 'filterByOwner', 'dateRange'],
               },
-              filterByOwner: {
-                type: 'boolean',
-                description: 'true = filtrar por dueño del deal (recomendado, default). false = todos los deals.',
+              campaign: {
+                type: 'object',
+                description: 'Campaign que se va a crear',
+                properties: {
+                  name: { type: 'string' },
+                  messageTemplate: { type: 'string' },
+                  schedules: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        daysOfWeek: { type: 'array', items: { type: 'number' } },
+                        time: { type: 'string' },
+                        label: { type: 'string' },
+                      },
+                    },
+                  },
+                  recipientType: { type: 'string' },
+                  salesUserTypes: { type: 'array', items: { type: 'string' } },
+                },
+                required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
               },
-              dateRange: {
-                type: 'string',
-                enum: ['today', 'current_week', 'current_month'],
-                description: "Período de datos. 'today' para reportes diarios, 'current_week' para semanales.",
-              },
+            },
+            required: ['summary'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'createDataSource',
+          description: 'Crea la fuente de datos. Solo llamar DESPUÉS de que el usuario confirme el plan.',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              pipelineId: { type: 'string' },
+              stageIds: { type: 'array', items: { type: 'string' } },
+              filterByOwner: { type: 'boolean' },
+              dateRange: { type: 'string', enum: ['today', 'current_week', 'current_month'] },
             },
             required: ['name', 'pipelineId'],
           },
@@ -2721,54 +2770,35 @@ Responde siempre en español. Sé directo y amigable.`;
         type: 'function',
         function: {
           name: 'createCampaign',
-          description: 'Crea una nueva campaña de mensajes de Slack. La campaña se crea como borrador (inactiva).',
+          description: 'Crea la campaña. Solo llamar DESPUÉS de createDataSource y con el dataSourceId recibido.',
           parameters: {
             type: 'object',
             properties: {
-              name: { type: 'string', description: 'Nombre de la campaña' },
-              messageTemplate: {
-                type: 'string',
-                description:
-                  'Plantilla del mensaje con variables {{variable}}. Usa \\n para saltos de línea. ' +
-                  'Siempre disponible: {{nombre}}. Del DataSource: {{solicitudes}} y una variable por etapa.',
-              },
+              name: { type: 'string' },
+              messageTemplate: { type: 'string' },
               schedules: {
                 type: 'array',
-                description: 'Horarios de envío',
                 items: {
                   type: 'object',
                   properties: {
-                    daysOfWeek: {
-                      type: 'array',
-                      items: { type: 'number' },
-                      description: 'Días de la semana: 0=Dom 1=Lun ... 6=Sáb',
-                    },
-                    time: { type: 'string', description: 'Hora HH:mm en formato 24h' },
-                    label: { type: 'string', description: 'Etiqueta opcional (ej: "Reporte matutino")' },
+                    daysOfWeek: { type: 'array', items: { type: 'number' } },
+                    time: { type: 'string' },
+                    label: { type: 'string' },
                   },
                   required: ['daysOfWeek', 'time'],
                 },
               },
-              recipientType: {
-                type: 'string',
-                enum: ['sales_user_type', 'channel'],
-                description: 'sales_user_type = por tipo de vendedor, channel = canal de Slack',
-              },
-              salesUserTypes: {
-                type: 'array',
-                items: { type: 'string', enum: ['kiosco', 'atn', 'ba', 'alianza'] },
-                description: 'Tipos de vendedor (solo si recipientType=sales_user_type). Vacío = todos.',
-              },
-              dataSourceId: {
-                type: 'string',
-                description: 'ID del DataSource a usar para las variables del mensaje',
-              },
+              recipientType: { type: 'string', enum: ['sales_user_type', 'channel'] },
+              salesUserTypes: { type: 'array', items: { type: 'string' } },
+              dataSourceId: { type: 'string' },
             },
             required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
           },
         },
       },
     ];
+
+    // ── Tool execution ───────────────────────────────────────────────────────
 
     async function executeTool(name: string, args: any): Promise<any> {
       if (name === 'listPipelines') {
@@ -2798,19 +2828,13 @@ Responde siempre en español. Sé directo y amigable.`;
         const pipelineSnap = await db.collection('pipelines').doc(pipelineId).get();
         const pipeline = pipelineSnap.data();
         const allStages: any[] = pipeline?.stages || [];
-
-        const selectedStages =
-          stageIds && stageIds.length > 0
-            ? allStages.filter((s: any) => stageIds.includes(s.id))
-            : allStages;
+        const selectedStages = stageIds && stageIds.length > 0
+          ? allStages.filter((s: any) => stageIds.includes(s.id))
+          : allStages;
 
         const variables = [
           { key: 'solicitudes', label: 'Total solicitudes del período', type: 'number' },
-          ...selectedStages.map((s: any) => ({
-            key: toSlug(s.name),
-            label: s.name,
-            type: 'number',
-          })),
+          ...selectedStages.map((s: any) => ({ key: toSlug(s.name), label: s.name, type: 'number' })),
         ];
 
         const docRef = await db.collection('data_sources').add({
@@ -2826,22 +2850,11 @@ Responde siempre en español. Sé directo y amigable.`;
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        return {
-          id: docRef.id,
-          name: dsName,
-          availableVariables: variables.map((v: any) => `{{${v.key}}}`),
-        };
+        return { id: docRef.id, name: dsName, availableVariables: variables.map((v: any) => `{{${v.key}}}`) };
       }
 
       if (name === 'createCampaign') {
-        const {
-          name: campName,
-          messageTemplate,
-          schedules,
-          recipientType,
-          salesUserTypes,
-          dataSourceId,
-        } = args;
+        const { name: campName, messageTemplate, schedules, recipientType, salesUserTypes, dataSourceId } = args;
 
         const scheduleSlots = schedules.map((s: any, i: number) => ({
           id: `slot_${i}`,
@@ -2853,33 +2866,17 @@ Responde siempre en español. Sé directo y amigable.`;
 
         const recipientConfig: any = { sourceType: recipientType };
         if (recipientType === 'sales_user_type') {
-          recipientConfig.salesUserTypes =
-            salesUserTypes && salesUserTypes.length > 0
-              ? salesUserTypes
-              : ['kiosco', 'atn', 'ba', 'alianza'];
+          recipientConfig.salesUserTypes = salesUserTypes && salesUserTypes.length > 0
+            ? salesUserTypes
+            : ['kiosco', 'atn', 'ba', 'alianza'];
         }
 
-        const messageVariants = [
-          {
-            id: 'variant_1',
-            label: 'Mensaje principal',
-            conditionType: 'always',
-            messageTemplate,
-            priority: 1,
-          },
-        ];
-
-        const dataConfig = dataSourceId
-          ? {
-              fetchSolicitudes: false,
-              fetchVentasAvanzadas: false,
-              fetchVentasReales: false,
-              fetchVideollamadas: false,
-              calculatePerformanceCategory: false,
-              dateRange: 'today',
-              dataSources: [{ dataSourceId }],
-            }
-          : undefined;
+        const dataConfig = dataSourceId ? {
+          fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false,
+          fetchVideollamadas: false, calculatePerformanceCategory: false,
+          dateRange: 'today',
+          dataSources: [{ dataSourceId }],
+        } : undefined;
 
         const docRef = await db.collection('campaigns').add({
           workspaceId,
@@ -2887,7 +2884,7 @@ Responde siempre en español. Sé directo y amigable.`;
           campaignType: 'standard',
           scheduleSlots,
           recipientConfig,
-          messageVariants,
+          messageVariants: [{ id: 'variant_1', label: 'Mensaje principal', conditionType: 'always', messageTemplate, priority: 1 }],
           mentionUser: true,
           isActive: false,
           executionCount: 0,
@@ -2903,12 +2900,14 @@ Responde siempre en español. Sé directo y amigable.`;
       throw new Error(`Herramienta desconocida: ${name}`);
     }
 
-    // Conversation loop
+    // ── Conversation loop ────────────────────────────────────────────────────
+
     const openaiMessages: any[] = [{ role: 'system', content: systemPrompt }, ...messages];
     const created: Record<string, any> = {};
+    let pendingPlan: any = null;
     let finalMessage = '';
 
-    for (let round = 0; round < 10; round++) {
+    for (let round = 0; round < 12; round++) {
       const response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         { model: 'gpt-4o', messages: openaiMessages, tools, tool_choice: 'auto' },
@@ -2928,27 +2927,33 @@ Responde siempre en español. Sé directo y amigable.`;
       for (const toolCall of assistantMsg.tool_calls) {
         const toolName = toolCall.function.name;
         const toolArgs = JSON.parse(toolCall.function.arguments);
-        try {
-          const result = await executeTool(toolName, toolArgs);
-          if (toolName === 'createDataSource') created.dataSource = result;
-          if (toolName === 'createCampaign') created.campaign = result;
+
+        if (toolName === 'showPlan') {
+          // Capture plan and stop — wait for user confirmation
+          pendingPlan = toolArgs;
           toolResults.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: JSON.stringify(result),
+            content: JSON.stringify({ status: 'plan_displayed', instruction: 'El plan fue mostrado al usuario. Espera su confirmación antes de proceder a crear.' }),
           });
-        } catch (err: any) {
-          toolResults.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({ error: err.message }),
-          });
+        } else {
+          try {
+            const result = await executeTool(toolName, toolArgs);
+            if (toolName === 'createDataSource') created.dataSource = result;
+            if (toolName === 'createCampaign') created.campaign = result;
+            toolResults.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(result) });
+          } catch (err: any) {
+            toolResults.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify({ error: err.message }) });
+          }
         }
       }
       openaiMessages.push(...toolResults);
+
+      // If plan was shown and this is not a confirmation turn, stop here
+      if (pendingPlan && !confirming) break;
     }
 
-    // Persist successful interactions as memory for future sessions
+    // Save memory on successful creation
     if (Object.keys(created).length > 0) {
       const userRequest = [...messages].reverse().find((m: any) => m.role === 'user')?.content || '';
       db.collection('agent_memory').add({
@@ -2962,6 +2967,7 @@ Responde siempre en español. Sé directo y amigable.`;
 
     return {
       message: finalMessage,
+      plan: pendingPlan || undefined,
       created: Object.keys(created).length > 0 ? created : undefined,
     };
   }
