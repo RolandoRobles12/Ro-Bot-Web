@@ -387,6 +387,7 @@ export interface DataSource {
   pipelineId?: string;            // Reference to Pipeline.id
   stageCategories?: StageCategory[]; // Legacy: category-based selection (kept for backward compat)
   stageIds?: string[];            // Per-stage selection: each stage is its own metric
+  filterByOwner?: boolean;        // true = filtrar por hubspotOwnerId del destinatario (default); false = todos los deals del pipeline
   additionalFilters?: DataSourceFilter[];  // Extra HubSpot filters for this source
 
   // For type='property'

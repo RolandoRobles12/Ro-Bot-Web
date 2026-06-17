@@ -590,6 +590,24 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                     </div>
                   )}
 
+                  {/* filterByOwner toggle */}
+                  {form.pipelineId && (
+                    <label className="flex items-start space-x-3 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={form.filterByOwner !== false}
+                        onChange={(e) => setForm((p) => ({ ...p, filterByOwner: e.target.checked }))}
+                        className="mt-0.5 rounded text-slack-purple"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Filtrar por deal owner</span>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Activo: cuenta solo los deals asignados al destinatario del mensaje.<br />
+                          Inactivo: cuenta todos los deals del pipeline (métricas de equipo).
+                        </p>
+                      </div>
+                    </label>
+                  )}
                 </div>
               )}
 
