@@ -269,6 +269,7 @@ export interface WorkspaceSettings {
   notificationChannel?: string;   // Slack channel for notifications
   // Integrations
   openaiApiKey?: string;           // OpenAI API key for AI message generation
+  hubspotToken?: string;           // HubSpot Private App token
   googleSheetsApiKey?: string;     // Google Sheets API key
   googleSheetsCredentials?: any;   // Google service account JSON credentials
   slackInteractivityUrl?: string;  // URL for Slack interactivity webhook (auto-generated)

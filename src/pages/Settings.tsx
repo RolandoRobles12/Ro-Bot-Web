@@ -127,6 +127,7 @@ export function Settings() {
     notifyOnCampaignFailure: true,
     notificationChannel: '',
     openaiApiKey: '',
+    hubspotToken: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
@@ -180,6 +181,7 @@ export function Settings() {
           notifyOnCampaignFailure: data.notifyOnCampaignFailure ?? true,
           notificationChannel: data.notificationChannel || '',
           openaiApiKey: data.openaiApiKey || '',
+          hubspotToken: data.hubspotToken || '',
         });
       }
     } catch (error) {
@@ -407,6 +409,7 @@ export function Settings() {
       await workspaceSettingsService.upsert(selectedWorkspace.id, {
         workspaceId: selectedWorkspace.id,
         openaiApiKey: settingsForm.openaiApiKey || '',
+        hubspotToken: settingsForm.hubspotToken || '',
         updatedAt: Timestamp.now(),
       });
       toast.success('Integraciones guardadas');
@@ -669,6 +672,49 @@ export function Settings() {
                 </div>
                 <p className="mt-1.5 text-xs text-gray-500">
                   Modelo utilizado: <code className="bg-gray-100 px-1 py-0.5 rounded">gpt-4o-mini</code>. La clave se almacena de forma segura en Firestore.
+                </p>
+              </div>
+            </Card>
+
+            {/* HubSpot */}
+            <Card className="p-6">
+              <div className="flex items-start space-x-4 mb-6">
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-lg">🔶</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">HubSpot</h2>
+                  <p className="text-sm text-gray-500">
+                    Token de tu Private App de HubSpot. Se usa para leer métricas de deals y etapas del pipeline.
+                  </p>
+                </div>
+                <div className="ml-auto flex-shrink-0">
+                  {settingsForm.hubspotToken ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Configurado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      No configurado
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="max-w-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Private App Token
+                </label>
+                <input
+                  type="password"
+                  value={settingsForm.hubspotToken}
+                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, hubspotToken: e.target.value }))}
+                  placeholder="pat-na1-..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent font-mono text-sm"
+                />
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Encuéntralo en HubSpot → Configuración → Integraciones → Private Apps.
                 </p>
               </div>
             </Card>

@@ -2374,36 +2374,31 @@ export const getHubSpotPipelineStages = functions.https.onCall(
     try {
       const { workspaceId, pipelineId } = data;
 
-      // Find any HubSpot connection (workspaceId is optional in existing docs)
-      let connectionsSnap = await db
-        .collection('hubspot_connections')
+      // Read HubSpot token from workspace_settings
+      const settingsSnap = await db
+        .collection('workspace_settings')
         .where('workspaceId', '==', workspaceId)
         .limit(1)
         .get();
 
-      if (connectionsSnap.empty) {
-        connectionsSnap = await db
-          .collection('hubspot_connections')
-          .limit(1)
-          .get();
+      let accessToken: string | undefined;
+
+      if (!settingsSnap.empty) {
+        accessToken = settingsSnap.docs[0].data().hubspotToken;
       }
 
-      if (connectionsSnap.empty) {
-        throw new functions.https.HttpsError(
-          'failed-precondition',
-          'hubspot_connections collection is empty — configure HubSpot first'
-        );
+      // Fallback: try any workspace_settings document
+      if (!accessToken) {
+        const anySettings = await db.collection('workspace_settings').limit(1).get();
+        if (!anySettings.empty) {
+          accessToken = anySettings.docs[0].data().hubspotToken;
+        }
       }
 
-      const connData = connectionsSnap.docs[0].data();
-      console.log('HubSpot connection keys:', Object.keys(connData));
-
-      // Support both OAuth accessToken and private-app apiKey
-      const accessToken = connData.accessToken || connData.apiKey || connData.token;
       if (!accessToken) {
         throw new functions.https.HttpsError(
           'failed-precondition',
-          `No token found in connection. Available fields: ${Object.keys(connData).join(', ')}`
+          'No hay token de HubSpot configurado. Agrégalo en Configuración → Integraciones.'
         );
       }
 
