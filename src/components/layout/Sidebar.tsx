@@ -12,6 +12,7 @@ import {
   MessageSquare,
   CalendarClock,
   Database,
+  Sparkles,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuthStore } from '@/store/authStore';
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Enviar Mensaje', href: '/send', icon: Send, roles: ['editor', 'admin'] },
   { name: 'Programador', href: '/scheduler', icon: CalendarClock, roles: ['editor', 'admin'] },
   { name: 'Fuentes de Datos', href: '/data-sources', icon: Database, roles: ['editor', 'admin'] },
+  { name: 'Constructor IA', href: '/agent', icon: Sparkles, roles: ['editor', 'admin'] },
   { name: 'Programados', href: '/scheduled', icon: Calendar, roles: ['viewer', 'editor', 'admin'] },
   { name: 'Historial', href: '/history', icon: History, roles: ['viewer', 'editor', 'admin'] },
   // Admin

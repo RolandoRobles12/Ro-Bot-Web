@@ -790,15 +790,33 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
               </div>
 
               {/* ── 5. Variables ─────────────────────────────── */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
+              {form.type === 'pipeline' ? (
+                /* Pipeline: preview de solo lectura — las variables son automáticas */
+                form.pipelineId ? (
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-700">Variables exportadas</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Se usarán como <code className="bg-gray-100 px-1 rounded">{`{{clave}}`}</code> en los mensajes.
-                    </p>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                      Variables disponibles en los mensajes
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {form.variables.map((v) => v.key && (
+                        <div key={v.key} className="flex items-center space-x-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg">
+                          <code className="text-xs font-mono text-slack-purple">{`{{${v.key}}}`}</code>
+                          <span className="text-xs text-gray-500">{v.label}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex space-x-2">
+                ) : null
+              ) : (
+                /* Otros tipos: editor manual */
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700">Variables exportadas</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Se usarán como <code className="bg-gray-100 px-1 rounded">{`{{clave}}`}</code> en los mensajes.
+                      </p>
+                    </div>
                     <button
                       type="button"
                       onClick={addVariable}
@@ -808,65 +826,49 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                       <span>Agregar</span>
                     </button>
                   </div>
-                </div>
-
-                {form.variables.length === 0 ? (
-                  <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm">
-                    <Code2 className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                    {form.type === 'pipeline'
-                      ? 'Las variables se generarán automáticamente al seleccionar las etapas'
-                      : 'Haz clic en "Agregar" para definir las variables que exporta esta fuente'}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {form.variables.map((v, i) => (
-                      <div key={i} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={v.key}
-                          onChange={(e) => updateVariable(i, { key: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
-                          placeholder="clave_variable"
-                          className="w-36 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
-                        />
-                        <input
-                          type="text"
-                          value={v.label}
-                          onChange={(e) => updateVariable(i, { label: e.target.value })}
-                          placeholder="Etiqueta visible"
-                          className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
-                        />
-                        <select
-                          value={v.type}
-                          onChange={(e) => updateVariable(i, { type: e.target.value as DataSourceVariable['type'] })}
-                          className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
-                        >
-                          <option value="number">Número</option>
-                          <option value="currency">Moneda</option>
-                          <option value="percentage">Porcentaje</option>
-                          <option value="text">Texto</option>
-                          <option value="date">Fecha</option>
-                        </select>
-                        <button onClick={() => removeVariable(i)} className="p-1.5 text-gray-400 hover:text-red-500">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {form.variables.length > 0 && (
-                  <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-500 mb-1.5">Vista previa de variables:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {form.variables.map((v) => v.key && (
-                        <span key={v.key} className="px-2 py-0.5 bg-white border border-gray-200 rounded text-xs font-mono text-gray-700">
-                          {`{{${v.key}}}`}
-                        </span>
+                  {form.variables.length === 0 ? (
+                    <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm">
+                      <Code2 className="w-6 h-6 mx-auto mb-2 opacity-50" />
+                      Haz clic en "Agregar" para definir las variables que exporta esta fuente
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {form.variables.map((v, i) => (
+                        <div key={i} className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={v.key}
+                            onChange={(e) => updateVariable(i, { key: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
+                            placeholder="clave_variable"
+                            className="w-36 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-slack-purple"
+                          />
+                          <input
+                            type="text"
+                            value={v.label}
+                            onChange={(e) => updateVariable(i, { label: e.target.value })}
+                            placeholder="Etiqueta visible"
+                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                          />
+                          <select
+                            value={v.type}
+                            onChange={(e) => updateVariable(i, { type: e.target.value as DataSourceVariable['type'] })}
+                            className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slack-purple"
+                          >
+                            <option value="number">Número</option>
+                            <option value="currency">Moneda</option>
+                            <option value="percentage">Porcentaje</option>
+                            <option value="text">Texto</option>
+                            <option value="date">Fecha</option>
+                          </select>
+                          <button onClick={() => removeVariable(i)} className="p-1.5 text-gray-400 hover:text-red-500">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       ))}
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Modal footer */}

@@ -13,6 +13,7 @@ import { Scheduler } from './pages/Scheduler';
 import { Settings } from './pages/Settings';
 import { DataSources } from './pages/DataSources';
 import { UsersAdmin } from './pages/UsersAdmin';
+import { AgentBuilder } from './pages/AgentBuilder';
 import { useAuth } from './hooks/useAuth';
 
 function App() {
@@ -129,6 +130,17 @@ function App() {
               <ProtectedRoute requiredRole="admin">
                 <Layout>
                   <UsersAdmin />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/agent"
+            element={
+              <ProtectedRoute requiredRole="editor">
+                <Layout>
+                  <AgentBuilder />
                 </Layout>
               </ProtectedRoute>
             }
