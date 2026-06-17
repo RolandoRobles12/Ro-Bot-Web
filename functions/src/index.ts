@@ -2509,3 +2509,341 @@ export const getHubSpotPipelineStages = functions.https.onCall(
     }
   }
 );
+
+// ==========================================================================
+// =                        AGENT BUILDER (AI)                              =
+// ==========================================================================
+
+export const agentBuildCampaign = functions.https.onCall(
+  async (data: {
+    messages: { role: string; content: string }[];
+    workspaceId: string;
+  }) => {
+    const { messages, workspaceId } = data;
+    if (!workspaceId) {
+      throw new functions.https.HttpsError('invalid-argument', 'workspaceId requerido');
+    }
+
+    // Get OpenAI API key from workspace settings
+    const settingsSnap = await db
+      .collection('workspace_settings')
+      .where('workspaceId', '==', workspaceId)
+      .limit(1)
+      .get();
+
+    let apiKey = '';
+    if (!settingsSnap.empty) {
+      apiKey = settingsSnap.docs[0].data().openaiApiKey || '';
+    }
+    if (!apiKey) apiKey = functions.config().openai?.api_key || '';
+    if (!apiKey) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'No hay OpenAI API key configurada. Agrégala en Configuración > Integraciones.'
+      );
+    }
+
+    const systemPrompt = `Eres un asistente de Ro-Bot, una plataforma que automatiza mensajes de Slack basados en datos de HubSpot CRM.
+
+Tu trabajo: ayudar a usuarios a crear Fuentes de Datos (DataSources) y Campañas de mensajes mediante conversación natural.
+
+## Conceptos de la plataforma
+
+### DataSource (Fuente de Datos)
+- Se conecta a un pipeline de HubSpot y define qué etapas (stages) trackear
+- Variables generadas automáticamente:
+  - {{solicitudes}} — siempre incluida: total de deals creados en el período
+  - {{nombre_etapa}} — una por cada etapa seleccionada (nombre convertido a slug: "En Proceso" → {{en_proceso}})
+- filterByOwner: true = solo deals asignados al vendedor destinatario (default, recomendado)
+- dateRange: período de los datos ('today', 'current_week', 'current_month')
+
+### Campaign (Campaña)
+- Envía mensajes de Slack según un horario configurado
+- Usa variables {{variable}} del DataSource y siempre {{nombre}} (nombre del destinatario)
+- schedules: lista de horarios con días de la semana y hora
+- recipientType: 'sales_user_type' (por tipo: kiosco/atn/ba/alianza) o 'channel' (canal de Slack)
+
+## Tu flujo de trabajo
+1. Llama a listPipelines para ver pipelines disponibles ANTES de pedir información al usuario
+2. Si hay ambigüedad (ej: múltiples pipelines), haz UNA pregunta concisa
+3. Una vez claro lo que se necesita, crea el DataSource primero (recibirás los IDs y variables disponibles)
+4. Luego crea la Campaign usando el dataSourceId recibido
+5. Confirma lo que creaste con un resumen amigable
+
+## Zona horaria por default: America/Mexico_City
+## Días: 0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb
+
+Responde siempre en español. Sé conciso y amigable.`;
+
+    const tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'listPipelines',
+          description: 'Lista los pipelines de HubSpot configurados en el workspace con sus etapas',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listDataSources',
+          description: 'Lista las fuentes de datos existentes en el workspace',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'createDataSource',
+          description: 'Crea una nueva fuente de datos de pipeline. Devuelve id y variables disponibles.',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Nombre descriptivo para la fuente de datos' },
+              pipelineId: { type: 'string', description: 'ID del pipeline de HubSpot' },
+              stageIds: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'IDs de etapas a trackear. Si está vacío, se incluyen todas las etapas.',
+              },
+              filterByOwner: {
+                type: 'boolean',
+                description: 'true = filtrar por dueño del deal (recomendado, default). false = todos los deals.',
+              },
+              dateRange: {
+                type: 'string',
+                enum: ['today', 'current_week', 'current_month'],
+                description: "Período de datos. 'today' para reportes diarios, 'current_week' para semanales.",
+              },
+            },
+            required: ['name', 'pipelineId'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'createCampaign',
+          description: 'Crea una nueva campaña de mensajes de Slack. La campaña se crea como borrador (inactiva).',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Nombre de la campaña' },
+              messageTemplate: {
+                type: 'string',
+                description:
+                  'Plantilla del mensaje con variables {{variable}}. Usa \\n para saltos de línea. ' +
+                  'Siempre disponible: {{nombre}}. Del DataSource: {{solicitudes}} y una variable por etapa.',
+              },
+              schedules: {
+                type: 'array',
+                description: 'Horarios de envío',
+                items: {
+                  type: 'object',
+                  properties: {
+                    daysOfWeek: {
+                      type: 'array',
+                      items: { type: 'number' },
+                      description: 'Días de la semana: 0=Dom 1=Lun ... 6=Sáb',
+                    },
+                    time: { type: 'string', description: 'Hora HH:mm en formato 24h' },
+                    label: { type: 'string', description: 'Etiqueta opcional (ej: "Reporte matutino")' },
+                  },
+                  required: ['daysOfWeek', 'time'],
+                },
+              },
+              recipientType: {
+                type: 'string',
+                enum: ['sales_user_type', 'channel'],
+                description: 'sales_user_type = por tipo de vendedor, channel = canal de Slack',
+              },
+              salesUserTypes: {
+                type: 'array',
+                items: { type: 'string', enum: ['kiosco', 'atn', 'ba', 'alianza'] },
+                description: 'Tipos de vendedor (solo si recipientType=sales_user_type). Vacío = todos.',
+              },
+              dataSourceId: {
+                type: 'string',
+                description: 'ID del DataSource a usar para las variables del mensaje',
+              },
+            },
+            required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
+          },
+        },
+      },
+    ];
+
+    async function executeTool(name: string, args: any): Promise<any> {
+      if (name === 'listPipelines') {
+        const snap = await db.collection('pipelines').where('workspaceId', '==', workspaceId).get();
+        return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      }
+
+      if (name === 'listDataSources') {
+        const snap = await db.collection('data_sources').where('workspaceId', '==', workspaceId).get();
+        return snap.docs.map((d: any) => ({ id: d.id, name: d.data().name, variables: d.data().variables }));
+      }
+
+      if (name === 'createDataSource') {
+        const { name: dsName, pipelineId, stageIds, filterByOwner = true, dateRange = 'today' } = args;
+
+        const pipelineSnap = await db.collection('pipelines').doc(pipelineId).get();
+        const pipeline = pipelineSnap.data();
+        const allStages: any[] = pipeline?.stages || [];
+
+        const selectedStages =
+          stageIds && stageIds.length > 0
+            ? allStages.filter((s: any) => stageIds.includes(s.id))
+            : allStages;
+
+        const variables = [
+          { key: 'solicitudes', label: 'Total solicitudes del período', type: 'number' },
+          ...selectedStages.map((s: any) => ({
+            key: toSlug(s.name),
+            label: s.name,
+            type: 'number',
+          })),
+        ];
+
+        const docRef = await db.collection('data_sources').add({
+          workspaceId,
+          name: dsName,
+          type: 'pipeline',
+          pipelineId,
+          stageIds: stageIds || [],
+          filterByOwner,
+          dateRange,
+          variables,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return {
+          id: docRef.id,
+          name: dsName,
+          availableVariables: variables.map((v: any) => `{{${v.key}}}`),
+        };
+      }
+
+      if (name === 'createCampaign') {
+        const {
+          name: campName,
+          messageTemplate,
+          schedules,
+          recipientType,
+          salesUserTypes,
+          dataSourceId,
+        } = args;
+
+        const scheduleSlots = schedules.map((s: any, i: number) => ({
+          id: `slot_${i}`,
+          daysOfWeek: s.daysOfWeek,
+          time: s.time,
+          timezone: 'America/Mexico_City',
+          label: s.label || `Horario ${i + 1}`,
+        }));
+
+        const recipientConfig: any = { sourceType: recipientType };
+        if (recipientType === 'sales_user_type') {
+          recipientConfig.salesUserTypes =
+            salesUserTypes && salesUserTypes.length > 0
+              ? salesUserTypes
+              : ['kiosco', 'atn', 'ba', 'alianza'];
+        }
+
+        const messageVariants = [
+          {
+            id: 'variant_1',
+            label: 'Mensaje principal',
+            conditionType: 'always',
+            messageTemplate,
+            priority: 1,
+          },
+        ];
+
+        const dataConfig = dataSourceId
+          ? {
+              fetchSolicitudes: false,
+              fetchVentasAvanzadas: false,
+              fetchVentasReales: false,
+              fetchVideollamadas: false,
+              calculatePerformanceCategory: false,
+              dateRange: 'today',
+              dataSources: [{ dataSourceId }],
+            }
+          : undefined;
+
+        const docRef = await db.collection('campaigns').add({
+          workspaceId,
+          name: campName,
+          campaignType: 'standard',
+          scheduleSlots,
+          recipientConfig,
+          messageVariants,
+          mentionUser: true,
+          isActive: false,
+          executionCount: 0,
+          ...(dataConfig && { dataConfig }),
+          createdBy: 'agent',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return { id: docRef.id, name: campName };
+      }
+
+      throw new Error(`Herramienta desconocida: ${name}`);
+    }
+
+    // Conversation loop
+    const openaiMessages: any[] = [{ role: 'system', content: systemPrompt }, ...messages];
+    const created: Record<string, any> = {};
+    let finalMessage = '';
+
+    for (let round = 0; round < 10; round++) {
+      const response = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        { model: 'gpt-4o', messages: openaiMessages, tools, tool_choice: 'auto' },
+        { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
+      );
+
+      const choice = response.data.choices[0];
+      const assistantMsg = choice.message;
+      openaiMessages.push(assistantMsg);
+
+      if (choice.finish_reason !== 'tool_calls') {
+        finalMessage = assistantMsg.content || '';
+        break;
+      }
+
+      const toolResults: any[] = [];
+      for (const toolCall of assistantMsg.tool_calls) {
+        const toolName = toolCall.function.name;
+        const toolArgs = JSON.parse(toolCall.function.arguments);
+        try {
+          const result = await executeTool(toolName, toolArgs);
+          if (toolName === 'createDataSource') created.dataSource = result;
+          if (toolName === 'createCampaign') created.campaign = result;
+          toolResults.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result),
+          });
+        } catch (err: any) {
+          toolResults.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: err.message }),
+          });
+        }
+      }
+      openaiMessages.push(...toolResults);
+    }
+
+    return {
+      message: finalMessage,
+      created: Object.keys(created).length > 0 ? created : undefined,
+    };
+  }
+);

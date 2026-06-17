@@ -54,6 +54,20 @@ export const listSalesUsers = httpsCallable<
   { users: any[] }
 >(functions, 'listSalesUsers');
 
+export const agentBuildCampaign = httpsCallable<
+  {
+    messages: { role: string; content: string }[];
+    workspaceId: string;
+  },
+  {
+    message: string;
+    created?: {
+      dataSource?: { id: string; name: string; availableVariables: string[] };
+      campaign?: { id: string; name: string };
+    };
+  }
+>(functions, 'agentBuildCampaign');
+
 export const calculateSalesMetrics = httpsCallable<
   {
     salesUserId: string;
