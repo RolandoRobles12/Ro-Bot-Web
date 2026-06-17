@@ -1846,17 +1846,23 @@ async function fetchRecipientMetrics(
         ['amount', 'dealstage', dsRealSalesProp, ...additionalProps]
       );
 
-      if (ds.stageIds && (ds.stageIds as string[]).length > 0 && ds.pipelineId) {
-        // Per-stage mode: each stage is its own metric
-        const stgPlDoc = await db.collection('pipelines').doc(ds.pipelineId).get();
-        if (stgPlDoc.exists) {
-          const stgPl = stgPlDoc.data()!;
-          for (const stageId of ds.stageIds as string[]) {
-            const stg = (stgPl.stages || []).find((s: any) => s.id === stageId);
-            if (!stg) continue;
-            metrics[`${prefix}${toSlug(stg.name)}`] = dsDeals.filter(
-              (d: any) => d.properties.dealstage === stageId
-            ).length;
+      if (ds.stageIds && ds.pipelineId) {
+        // solicitudes = total deals creados en el período (siempre incluido)
+        metrics[`${prefix}solicitudes`] = dsDeals.length;
+
+        // Per-stage counts (opcionales)
+        const stageIds = ds.stageIds as string[];
+        if (stageIds.length > 0) {
+          const stgPlDoc = await db.collection('pipelines').doc(ds.pipelineId).get();
+          if (stgPlDoc.exists) {
+            const stgPl = stgPlDoc.data()!;
+            for (const stageId of stageIds) {
+              const stg = (stgPl.stages || []).find((s: any) => s.id === stageId);
+              if (!stg) continue;
+              metrics[`${prefix}${toSlug(stg.name)}`] = dsDeals.filter(
+                (d: any) => d.properties.dealstage === stageId
+              ).length;
+            }
           }
         }
       } else {

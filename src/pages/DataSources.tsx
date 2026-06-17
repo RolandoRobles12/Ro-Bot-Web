@@ -9,7 +9,7 @@ import {
   Globe,
   Sparkles,
   CheckCircle2,
-  ChevronRight,
+
   Code2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -62,42 +62,6 @@ const TYPE_ICONS: Record<DataSourceType, string> = {
   api: '🌐',
 };
 
-// Quick-start templates to help create common data sources
-const DS_TEMPLATES = [
-  {
-    id: 'metricas_kioscos',
-    label: 'Métricas Semanales Kioscos',
-    emoji: '🏪',
-    description: 'Solicitudes, ventas avanzadas y ventas reales de la semana actual',
-    config: {
-      type: 'pipeline' as DataSourceType,
-      dateRange: 'this_week' as DateRangeType,
-      icon: '📊',
-    },
-  },
-  {
-    id: 'actividad_ba',
-    label: 'Actividad Diaria BAs',
-    emoji: '🎯',
-    description: 'Videollamadas del día y progreso de la semana para Embajadores',
-    config: {
-      type: 'pipeline' as DataSourceType,
-      dateRange: 'today' as DateRangeType,
-      icon: '📞',
-    },
-  },
-  {
-    id: 'resumen_mensual',
-    label: 'Resumen Mensual',
-    emoji: '📅',
-    description: 'Resultados del mes: solicitudes, ventas y comparación vs meta',
-    config: {
-      type: 'pipeline' as DataSourceType,
-      dateRange: 'this_month' as DateRangeType,
-      icon: '📅',
-    },
-  },
-];
 
 // ==========================================================================
 // Helpers
@@ -132,13 +96,16 @@ function createEmptyVariable(): DataSourceVariable {
 
 const createEmptyFilter = (): DataSourceFilter => ({ propertyName: '', operator: 'EQ', value: '' });
 
-/** Auto-generate one variable per selected stage */
+/** Genera variables: solicitudes siempre incluido + una por cada stage seleccionado */
 function autoGenerateVariables(stages: Pick<PipelineStage, 'id' | 'name'>[]): DataSourceVariable[] {
-  return stages.map((s) => ({
-    key: toSlug(s.name),
-    label: s.name,
-    type: 'number' as const,
-  }));
+  return [
+    { key: 'solicitudes', label: 'Total solicitudes del período', type: 'number' as const },
+    ...stages.map((s) => ({
+      key: toSlug(s.name),
+      label: s.name,
+      type: 'number' as const,
+    })),
+  ];
 }
 
 // ==========================================================================
@@ -189,20 +156,10 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
 
   // ── Modal handlers ──────────────────────────────────────────────────────
 
-  const openModal = (ds?: DataSource, template?: typeof DS_TEMPLATES[number]) => {
+  const openModal = (ds?: DataSource) => {
     if (ds) {
       setEditingDs(ds);
       setForm({ ...ds, updatedAt: Timestamp.now() });
-    } else if (template) {
-      setEditingDs(null);
-      const base = {
-        ...createEmptyDataSource(selectedWorkspace?.id || ''),
-        name: template.label,
-        description: template.description,
-        ...template.config,
-      };
-      if (pipelines.length === 1 && !base.pipelineId) base.pipelineId = pipelines[0].id;
-      setForm(base);
     } else {
       setEditingDs(null);
       const base = createEmptyDataSource(selectedWorkspace?.id || '');
@@ -290,12 +247,10 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
 
 
   useEffect(() => {
-    if (form.type !== 'pipeline') return;
-    const ids = form.stageIds || [];
-    if (ids.length === 0) return;
+    if (form.type !== 'pipeline' || !form.pipelineId) return;
     const pipeline = pipelines.find((p) => p.id === form.pipelineId);
     if (!pipeline) return;
-    const selected = pipeline.stages.filter((s) => ids.includes(s.id));
+    const selected = pipeline.stages.filter((s) => (form.stageIds || []).includes(s.id));
     setForm((prev) => ({ ...prev, variables: autoGenerateVariables(selected) }));
   }, [form.stageIds, form.type, form.pipelineId, pipelines]);
 
@@ -345,30 +300,14 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
         </div>
       )}
 
-      {/* Quick-start templates — only shown when no data sources yet */}
+      {/* Empty state */}
       {!loading && dataSources.length === 0 && (
-        <div>
-          <p className="text-sm font-medium text-gray-600 mb-3">Comienza con una plantilla:</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {DS_TEMPLATES.map((tpl) => (
-              <button
-                key={tpl.id}
-                onClick={() => openModal(undefined, tpl)}
-                className="text-left p-4 border-2 border-dashed border-gray-200 rounded-xl hover:border-slack-purple hover:bg-slack-purple/5 transition-colors group"
-              >
-                <div className="text-3xl mb-2">{tpl.emoji}</div>
-                <p className="font-semibold text-gray-800 group-hover:text-slack-purple text-sm">{tpl.label}</p>
-                <p className="text-xs text-gray-500 mt-1">{tpl.description}</p>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => openModal()}
-            className="mt-3 text-sm text-slack-purple hover:underline flex items-center space-x-1"
-          >
-            <span>Crear desde cero</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
+        <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+          <p className="text-gray-400 text-sm mb-3">Aún no hay fuentes de datos</p>
+          <Button onClick={() => openModal()} className="flex items-center space-x-2 mx-auto">
+            <Plus className="w-4 h-4" />
+            <span>Nueva Fuente</span>
+          </Button>
         </div>
       )}
 
@@ -598,44 +537,58 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                     )}
                   </div>
 
-                  {/* Per-stage selector */}
-                  {(() => {
-                    const pipeline = pipelines.find((p) => p.id === form.pipelineId);
-                    if (!pipeline || pipeline.stages.length === 0) return null;
-                    return (
+                  {/* Variables de pipeline */}
+                  {form.pipelineId && (
+                    <div className="space-y-3">
+                      {/* solicitudes — siempre incluido */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          ¿Qué etapas contar?{' '}
-                          <span className="text-xs text-gray-400 font-normal">— una variable por etapa seleccionada</span>
-                        </label>
-                        <div className="space-y-2">
-                          {pipeline.stages.map((stage) => {
-                            const checked = (form.stageIds || []).includes(stage.id);
-                            return (
-                              <label key={stage.id} className="flex items-center space-x-3 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    const ids = form.stageIds || [];
-                                    setForm((p) => ({
-                                      ...p,
-                                      stageIds: e.target.checked
-                                        ? [...ids, stage.id]
-                                        : ids.filter((id) => id !== stage.id),
-                                    }));
-                                  }}
-                                  className="rounded text-slack-purple"
-                                />
-                                <span className="text-sm text-gray-700 font-medium flex-1">{stage.name}</span>
-                                <span className="text-xs text-gray-400 font-mono">{`{{${toSlug(stage.name)}}}`}</span>
-                              </label>
-                            );
-                          })}
+                        <p className="text-sm font-medium text-gray-700 mb-1">Variable siempre incluida</p>
+                        <div className="flex items-center justify-between px-3 py-2 bg-slack-purple/5 border border-slack-purple/20 rounded-lg">
+                          <span className="text-sm text-gray-700">Total solicitudes del período</span>
+                          <span className="text-xs font-mono text-slack-purple">{`{{solicitudes}}`}</span>
                         </div>
                       </div>
-                    );
-                  })()}
+
+                      {/* stages opcionales */}
+                      {(() => {
+                        const pipeline = pipelines.find((p) => p.id === form.pipelineId);
+                        if (!pipeline || pipeline.stages.length === 0) return null;
+                        return (
+                          <div>
+                            <p className="text-sm font-medium text-gray-700 mb-1">
+                              Etapas adicionales{' '}
+                              <span className="text-xs text-gray-400 font-normal">— opcional</span>
+                            </p>
+                            <div className="space-y-1.5">
+                              {pipeline.stages.map((stage) => {
+                                const checked = (form.stageIds || []).includes(stage.id);
+                                return (
+                                  <label key={stage.id} className="flex items-center space-x-3 cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-50">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => {
+                                        const ids = form.stageIds || [];
+                                        setForm((p) => ({
+                                          ...p,
+                                          stageIds: e.target.checked
+                                            ? [...ids, stage.id]
+                                            : ids.filter((id) => id !== stage.id),
+                                        }));
+                                      }}
+                                      className="rounded text-slack-purple"
+                                    />
+                                    <span className="text-sm text-gray-700 flex-1">{stage.name}</span>
+                                    <span className="text-xs font-mono text-gray-400">{`{{${toSlug(stage.name)}}}`}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                 </div>
               )}
