@@ -896,15 +896,31 @@ export const listSalesUsers = functions.https.onCall(
       }
 
       const extDb = getExternalDb();
+      const isExternal = extDb !== db;
+      console.log(`listSalesUsers: workspaceId=${workspaceId}, usando=${isExternal ? 'proyecto externo' : 'proyecto local (fallback)'}`);
+
+      // Sin filtro isActive ni orderBy para diagnóstico — devuelve todo lo que encuentre
       let q: any = extDb
         .collection('sales_users')
-        .where('workspaceId', '==', workspaceId)
-        .where('isActive', '==', true)
-        .orderBy('nombre', 'asc');
+        .where('workspaceId', '==', workspaceId);
 
       if (tipo) q = q.where('tipo', '==', tipo);
 
       const snapshot = await q.get();
+      console.log(`listSalesUsers: encontrados ${snapshot.docs.length} documentos`);
+
+      // Log del primer doc para ver su estructura
+      if (snapshot.docs.length > 0) {
+        console.log('listSalesUsers: primer doc keys =', Object.keys(snapshot.docs[0].data()));
+      } else {
+        // Intento sin workspaceId para ver si hay algo en la colección
+        const allSnap = await extDb.collection('sales_users').limit(3).get();
+        console.log(`listSalesUsers: total en colección sin filtro = ${allSnap.docs.length}`);
+        if (allSnap.docs.length > 0) {
+          console.log('listSalesUsers: ejemplo workspaceId en externo =', allSnap.docs[0].data().workspaceId);
+        }
+      }
+
       const users = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       return { users };
     } catch (err: any) {
