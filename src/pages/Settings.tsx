@@ -217,18 +217,21 @@ export function Settings() {
       toast.error('Pipeline ID es requerido');
       return;
     }
+    const clean = Object.fromEntries(
+      Object.entries(pipelineForm).filter(([, v]) => v !== undefined)
+    ) as typeof pipelineForm;
     try {
       setSavingPipeline(true);
       if (editingPipeline) {
         await pipelineService.update(editingPipeline.id, {
-          ...pipelineForm,
+          ...clean,
           updatedAt: Timestamp.now(),
         });
         toast.success('Pipeline actualizado');
       } else {
         await pipelineService.create({
-          ...pipelineForm,
-          name: pipelineForm.name || pipelineForm.hubspotPipelineId,
+          ...clean,
+          name: clean.name || clean.hubspotPipelineId,
           workspaceId: selectedWorkspace?.id || '',
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
