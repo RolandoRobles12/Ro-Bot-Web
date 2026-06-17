@@ -2374,32 +2374,31 @@ export const getHubSpotPipelineStages = functions.https.onCall(
     try {
       const { workspaceId, pipelineId } = data;
 
-      // Try workspace-specific connection first, then fall back to any connection
-      let connectionsSnap = await db
-        .collection('hubspot_connections')
+      // Read HubSpot token from workspace_settings
+      const settingsSnap = await db
+        .collection('workspace_settings')
         .where('workspaceId', '==', workspaceId)
         .limit(1)
         .get();
 
-      if (connectionsSnap.empty) {
-        connectionsSnap = await db
-          .collection('hubspot_connections')
-          .limit(1)
-          .get();
+      let accessToken: string | undefined;
+
+      if (!settingsSnap.empty) {
+        accessToken = settingsSnap.docs[0].data().hubspotToken;
       }
 
-      if (connectionsSnap.empty) {
-        throw new functions.https.HttpsError(
-          'failed-precondition',
-          'No hay conexión activa de HubSpot. Configúrala en Integraciones.'
-        );
+      // Fallback: try any workspace_settings document
+      if (!accessToken) {
+        const anySettings = await db.collection('workspace_settings').limit(1).get();
+        if (!anySettings.empty) {
+          accessToken = anySettings.docs[0].data().hubspotToken;
+        }
       }
 
-      const accessToken = connectionsSnap.docs[0].data().accessToken;
       if (!accessToken) {
         throw new functions.https.HttpsError(
           'failed-precondition',
-          'La conexión de HubSpot no tiene un access token válido.'
+          'No hay token de HubSpot configurado. Agrégalo en Configuración → Integraciones.'
         );
       }
 
