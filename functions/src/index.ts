@@ -2374,18 +2374,16 @@ export const getHubSpotPipelineStages = functions.https.onCall(
     try {
       const { workspaceId, pipelineId } = data;
 
-      // Try workspace-specific connection first, then fall back to any active connection
+      // Try workspace-specific connection first, then fall back to any connection
       let connectionsSnap = await db
         .collection('hubspot_connections')
         .where('workspaceId', '==', workspaceId)
-        .where('isActive', '==', true)
         .limit(1)
         .get();
 
       if (connectionsSnap.empty) {
         connectionsSnap = await db
           .collection('hubspot_connections')
-          .where('isActive', '==', true)
           .limit(1)
           .get();
       }
