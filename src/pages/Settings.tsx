@@ -37,7 +37,6 @@ import type {
   WorkspaceSettings,
   Pipeline,
   PipelineStage,
-  StageCategory,
   CustomHubSpotProperty,
 } from '@/types';
 
@@ -49,14 +48,6 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; description: stri
   { id: 'integrations', label: 'Integraciones', icon: Plug, description: 'OpenAI y Slack' },
   { id: 'general', label: 'General', icon: SettingsIcon, description: 'Preferencias generales' },
   { id: 'notifications', label: 'Notificaciones', icon: Bell, description: 'Alertas y avisos' },
-];
-
-const STAGE_CATEGORIES: { value: StageCategory; label: string; color: string; description: string }[] = [
-  { value: 'new', label: 'Nuevo', color: 'bg-blue-500', description: 'Recién creado' },
-  { value: 'in_progress', label: 'En proceso', color: 'bg-yellow-500', description: 'Trabajando en ello' },
-  { value: 'advanced', label: 'Avanzado', color: 'bg-purple-500', description: 'Progreso significativo' },
-  { value: 'won', label: 'Ganado', color: 'bg-green-500', description: 'Cerrado exitosamente' },
-  { value: 'lost', label: 'Perdido', color: 'bg-red-500', description: 'No se concretó' },
 ];
 
 const TIMEZONES = [
@@ -269,7 +260,6 @@ export function Settings() {
       const stages: PipelineStage[] = result.data.stages.map((s, i) => ({
         id: s.id,
         name: s.label,
-        category: 'new' as StageCategory,
         order: i,
       }));
       setPipelineForm((prev) => ({ ...prev, stages }));
@@ -288,14 +278,7 @@ export function Settings() {
     }));
   };
 
-  const updateStage = (index: number, updates: Partial<PipelineStage>) => {
-    setPipelineForm((prev) => ({
-      ...prev,
-      stages: prev.stages.map((stage, i) =>
-        i === index ? { ...stage, ...updates } : stage
-      ),
-    }));
-  };
+
 
   // ==================== CUSTOM PROPERTY HANDLERS ====================
 
@@ -1021,15 +1004,6 @@ export function Settings() {
                         <p className="text-sm font-medium text-gray-800 truncate">{stage.name}</p>
                         <p className="text-xs text-gray-400 font-mono">{stage.id}</p>
                       </div>
-                      <select
-                        value={stage.category}
-                        onChange={(e) => updateStage(index, { category: e.target.value as StageCategory })}
-                        className="w-36 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      >
-                        {STAGE_CATEGORIES.map((cat) => (
-                          <option key={cat.value} value={cat.value}>{cat.label}</option>
-                        ))}
-                      </select>
                       <button
                         type="button"
                         onClick={() => removeStage(index)}
@@ -1037,16 +1011,6 @@ export function Settings() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Category legend */}
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {STAGE_CATEGORIES.map((cat) => (
-                    <div key={cat.value} className="flex items-center space-x-1.5">
-                      <div className={`w-2.5 h-2.5 rounded-full ${cat.color}`} />
-                      <span className="text-xs text-gray-500">{cat.label}</span>
                     </div>
                   ))}
                 </div>

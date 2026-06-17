@@ -300,7 +300,7 @@ export type StageCategory = 'new' | 'in_progress' | 'advanced' | 'won' | 'lost';
 export interface PipelineStage {
   id: string;                     // HubSpot stage ID or custom ID
   name: string;                   // User-friendly name
-  category: StageCategory;        // How this stage is categorized for metrics
+  category?: StageCategory;       // Legacy: kept for backward compat only
   order: number;                  // Display order
   color?: string;                 // Optional color for UI
 }
@@ -385,7 +385,8 @@ export interface DataSource {
 
   // For type='pipeline'
   pipelineId?: string;            // Reference to Pipeline.id
-  stageCategories?: StageCategory[]; // Which stage categories to include in count
+  stageCategories?: StageCategory[]; // Legacy: category-based selection (kept for backward compat)
+  stageIds?: string[];            // Per-stage selection: each stage is its own metric
   additionalFilters?: DataSourceFilter[];  // Extra HubSpot filters for this source
 
   // For type='property'

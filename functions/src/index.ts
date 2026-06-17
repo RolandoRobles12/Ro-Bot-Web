@@ -7,6 +7,15 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+function toSlug(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
 // ==========================================================================
 // =           FIREBASE EXTERNO - USUARIOS Y METAS                          =
 // ==========================================================================
@@ -1787,44 +1796,59 @@ async function fetchRecipientMetrics(
         ['amount', 'dealstage', dsRealSalesProp, ...additionalProps]
       );
 
-      if (dsFetchSolicitudes) {
-        metrics[`${prefix}solicitudes`] = dsDeals.length;
-        const metaSol = recipient.metaSolicitudes || 0;
-        if (metaSol > 0) {
-          metrics[`${prefix}meta_solicitudes`] = metaSol;
-          metrics[`${prefix}pct_solicitudes`] = Math.round((dsDeals.length / metaSol) * 100);
-        }
-      }
-
-      if (dsFetchVentasAvanzadas) {
-        const advStages = dsAdvancedStageIds.length ? dsAdvancedStageIds
-          : (dsResolvedPipeline === '76732496'
-            ? ['146251806', '146251807', '150228300']
-            : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097']);
-        metrics[`${prefix}ventas_avanzadas`] = dsDeals.reduce((total: number, deal: any) => {
-          const amount = parseFloat(deal.properties.amount || '0');
-          return advStages.includes(deal.properties.dealstage) ? total + amount : total;
-        }, 0);
-        const metaV = recipient.metaVentas || 0;
-        if (metaV > 0) {
-          metrics[`${prefix}pct_ventas_avanzadas`] = Math.round((metrics[`${prefix}ventas_avanzadas`] / metaV) * 100);
-        }
-      }
-
-      if (dsFetchVentasReales) {
-        metrics[`${prefix}ventas`] = dsDeals.reduce((total: number, deal: any) => {
-          const amount = parseFloat(deal.properties.amount || '0');
-          const dateEntered = deal.properties[dsRealSalesProp];
-          if (dateEntered) {
-            const d = new Date(dateEntered);
-            if (d >= new Date(dsStart) && d <= new Date(dsEnd)) return total + amount;
+      if (ds.stageIds && (ds.stageIds as string[]).length > 0 && ds.pipelineId) {
+        // Per-stage mode: each stage is its own metric
+        const stgPlDoc = await db.collection('pipelines').doc(ds.pipelineId).get();
+        if (stgPlDoc.exists) {
+          const stgPl = stgPlDoc.data()!;
+          for (const stageId of ds.stageIds as string[]) {
+            const stg = (stgPl.stages || []).find((s: any) => s.id === stageId);
+            if (!stg) continue;
+            metrics[`${prefix}${toSlug(stg.name)}`] = dsDeals.filter(
+              (d: any) => d.properties.dealstage === stageId
+            ).length;
           }
-          return total;
-        }, 0);
-        const metaV = recipient.metaVentas || 0;
-        if (metaV > 0) {
-          metrics[`${prefix}meta_ventas`] = metaV;
-          metrics[`${prefix}pct_ventas`] = Math.round((metrics[`${prefix}ventas`] / metaV) * 100);
+        }
+      } else {
+        if (dsFetchSolicitudes) {
+          metrics[`${prefix}solicitudes`] = dsDeals.length;
+          const metaSol = recipient.metaSolicitudes || 0;
+          if (metaSol > 0) {
+            metrics[`${prefix}meta_solicitudes`] = metaSol;
+            metrics[`${prefix}pct_solicitudes`] = Math.round((dsDeals.length / metaSol) * 100);
+          }
+        }
+
+        if (dsFetchVentasAvanzadas) {
+          const advStages = dsAdvancedStageIds.length ? dsAdvancedStageIds
+            : (dsResolvedPipeline === '76732496'
+              ? ['146251806', '146251807', '150228300']
+              : ['69785436', '33642516', '171655337', '33642518', '61661493', '151337783', '150187097']);
+          metrics[`${prefix}ventas_avanzadas`] = dsDeals.reduce((total: number, deal: any) => {
+            const amount = parseFloat(deal.properties.amount || '0');
+            return advStages.includes(deal.properties.dealstage) ? total + amount : total;
+          }, 0);
+          const metaV = recipient.metaVentas || 0;
+          if (metaV > 0) {
+            metrics[`${prefix}pct_ventas_avanzadas`] = Math.round((metrics[`${prefix}ventas_avanzadas`] / metaV) * 100);
+          }
+        }
+
+        if (dsFetchVentasReales) {
+          metrics[`${prefix}ventas`] = dsDeals.reduce((total: number, deal: any) => {
+            const amount = parseFloat(deal.properties.amount || '0');
+            const dateEntered = deal.properties[dsRealSalesProp];
+            if (dateEntered) {
+              const d = new Date(dateEntered);
+              if (d >= new Date(dsStart) && d <= new Date(dsEnd)) return total + amount;
+            }
+            return total;
+          }, 0);
+          const metaV = recipient.metaVentas || 0;
+          if (metaV > 0) {
+            metrics[`${prefix}meta_ventas`] = metaV;
+            metrics[`${prefix}pct_ventas`] = Math.round((metrics[`${prefix}ventas`] / metaV) * 100);
+          }
         }
       }
 
