@@ -1834,15 +1834,20 @@ async function fetchRecipientMetrics(
       const dsDateRange = drMap[ds.dateRange] || 'current_week';
       const { startDate: dsStart, endDate: dsEnd } = getWeekDateRange(dsDateRange);
 
+      const dsFilters: any[] = [
+        { propertyName: 'createdate', operator: 'GTE', value: dsStart },
+        { propertyName: 'createdate', operator: 'LTE', value: dsEnd },
+        { propertyName: 'pipeline', operator: 'EQ', value: dsResolvedPipeline },
+        ...additionalFilters,
+      ];
+      // filterByOwner es true por defecto; solo omitir si está explícitamente en false
+      if (ds.filterByOwner !== false) {
+        dsFilters.push({ propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds });
+      }
+
       const dsDeals = await queryHubSpotDeals(
         accessToken,
-        [
-          { propertyName: 'createdate', operator: 'GTE', value: dsStart },
-          { propertyName: 'createdate', operator: 'LTE', value: dsEnd },
-          { propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds },
-          { propertyName: 'pipeline', operator: 'EQ', value: dsResolvedPipeline },
-          ...additionalFilters,
-        ],
+        dsFilters,
         ['amount', 'dealstage', dsRealSalesProp, ...additionalProps]
       );
 
