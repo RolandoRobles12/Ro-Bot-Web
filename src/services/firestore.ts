@@ -402,17 +402,16 @@ export const positionService = {
 };
 
 // Sales User services
-// Lee/escribe en db (proyecto principal) — sales_users es configuración
-// propia de Ro-Bot (HubSpot IDs, Slack channels, metas), no vive en el
-// proyecto externo de usuarios.
+// Los sales_users viven en el proyecto externo de Firebase (usersDb).
+// Las escrituras solo se permiten para actualizar metas/config propia de Ro-Bot.
 export const salesUserService = {
   get: async (userId: string): Promise<SalesUser | null> => {
-    const snap = await getDoc(doc(db, 'sales_users', userId));
+    const snap = await getDoc(doc(usersDb, 'sales_users', userId));
     return snap.exists() ? ({ id: snap.id, ...snap.data() } as SalesUser) : null;
   },
   getByWorkspace: (workspaceId: string) => {
     const q = query(
-      collection(db, 'sales_users'),
+      collection(usersDb, 'sales_users'),
       where('workspaceId', '==', workspaceId),
       where('isActive', '==', true),
       orderBy('nombre', 'asc')
@@ -421,7 +420,7 @@ export const salesUserService = {
   },
   getByType: (workspaceId: string, tipo: string) => {
     const q = query(
-      collection(db, 'sales_users'),
+      collection(usersDb, 'sales_users'),
       where('workspaceId', '==', workspaceId),
       where('tipo', '==', tipo),
       where('isActive', '==', true),
@@ -429,16 +428,12 @@ export const salesUserService = {
     );
     return getDocs(q).then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() } as SalesUser)));
   },
-  create: async (data: Omit<SalesUser, 'id'>): Promise<string> => {
-    const ref = await addDoc(collection(db, 'sales_users'), { ...data, createdAt: Timestamp.now() });
-    return ref.id;
-  },
   update: (userId: string, data: Partial<SalesUser>) =>
-    updateDoc(doc(db, 'sales_users', userId), { ...data, updatedAt: Timestamp.now() }),
-  delete: (userId: string) => deleteDoc(doc(db, 'sales_users', userId)),
+    updateDoc(doc(usersDb, 'sales_users', userId), { ...data, updatedAt: Timestamp.now() }),
+  delete: (userId: string) => deleteDoc(doc(usersDb, 'sales_users', userId)),
   subscribe: (workspaceId: string, callback: (users: SalesUser[]) => void) => {
     const q = query(
-      collection(db, 'sales_users'),
+      collection(usersDb, 'sales_users'),
       where('workspaceId', '==', workspaceId),
       where('isActive', '==', true),
       orderBy('nombre', 'asc')
