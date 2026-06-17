@@ -2525,10 +2525,12 @@ export const agentBuildCampaign = functions.https.onCall(
     }
 
     // Load everything in parallel: API key, workspace context, memories
-    const [settingsSnap, pipelinesSnap, dataSourcesSnap, memoriesSnap] = await Promise.all([
+    const [settingsSnap, pipelinesSnap, dataSourcesSnap, hubspotPropsSnap, customPropsSnap, memoriesSnap] = await Promise.all([
       db.collection('workspace_settings').where('workspaceId', '==', workspaceId).limit(1).get(),
       db.collection('pipelines').where('workspaceId', '==', workspaceId).get(),
       db.collection('data_sources').where('workspaceId', '==', workspaceId).get(),
+      db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).where('isActive', '==', true).get(),
+      db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
       db.collection('agent_memory')
         .where('workspaceId', '==', workspaceId)
         .orderBy('createdAt', 'desc')
@@ -2562,6 +2564,28 @@ export const agentBuildCampaign = functions.https.onCall(
           return `- "${ds.name}" (id: ${d.id}) → variables: ${vars}`;
         }).join('\n')
       : '(ninguna todavía)';
+
+    // HubSpot properties configured in the workspace
+    const hubspotPropsContext = hubspotPropsSnap.docs.length > 0
+      ? hubspotPropsSnap.docs.map((d: any) => {
+          const p = d.data();
+          const opts = p.type === 'enum' && p.enumOptions?.length
+            ? ` | opciones: ${p.enumOptions.map((o: any) => typeof o === 'string' ? o : `${o.value} (${o.label})`).join(', ')}`
+            : '';
+          return `- ${p.name} | label: "${p.label}" | tipo: ${p.type} | categoría: ${p.category}${opts}`;
+        }).join('\n')
+      : '(ninguna configurada)';
+
+    // Custom properties catalog (used in DataSource additional filters)
+    const customPropsContext = customPropsSnap.docs.length > 0
+      ? customPropsSnap.docs.map((d: any) => {
+          const p = d.data();
+          const opts = p.type === 'enum' && p.enumOptions?.length
+            ? ` | opciones: ${p.enumOptions.map((o: any) => typeof o === 'string' ? o : `${o.value} (${o.label})`).join(', ')}`
+            : '';
+          return `- ${p.name} | label: "${p.label}" | tipo: ${p.type}${opts}`;
+        }).join('\n')
+      : '(ninguna configurada)';
 
     // Build memory context from past successful interactions
     const memoryContext = memoriesSnap.docs.length > 0
@@ -2602,6 +2626,13 @@ ${pipelineContext || '(no hay pipelines configurados)'}
 
 ### Fuentes de datos existentes
 ${dataSourceContext}
+
+### Propiedades de HubSpot configuradas en el workspace
+Estas son las propiedades de deals disponibles para filtros adicionales en DataSources:
+${hubspotPropsContext}
+
+### Catálogo de propiedades custom (filtros avanzados en DataSources)
+${customPropsContext}
 ${memoryContext}
 
 ## Tu flujo de trabajo
@@ -2629,6 +2660,14 @@ Responde siempre en español. Sé directo y amigable.`;
         function: {
           name: 'listDataSources',
           description: 'Lista las fuentes de datos existentes en el workspace',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listProperties',
+          description: 'Lista todas las propiedades de HubSpot configuradas en el workspace (para usar en filtros adicionales de DataSources)',
           parameters: { type: 'object', properties: {} },
         },
       },
@@ -2723,6 +2762,17 @@ Responde siempre en español. Sé directo y amigable.`;
       if (name === 'listDataSources') {
         const snap = await db.collection('data_sources').where('workspaceId', '==', workspaceId).get();
         return snap.docs.map((d: any) => ({ id: d.id, name: d.data().name, variables: d.data().variables }));
+      }
+
+      if (name === 'listProperties') {
+        const [hp, cp] = await Promise.all([
+          db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).where('isActive', '==', true).get(),
+          db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
+        ]);
+        return {
+          hubspotProperties: hp.docs.map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
+          customProperties: cp.docs.map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
+        };
       }
 
       if (name === 'createDataSource') {
