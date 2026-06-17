@@ -24,8 +24,8 @@ import type {
   DataSourceFilter,
   DataSourceType,
   DateRangeType,
-  StageCategory,
   Pipeline,
+  PipelineStage,
   CustomHubSpotProperty,
 } from '@/types';
 
@@ -47,14 +47,6 @@ const DATE_RANGES: { value: DateRangeType; label: string }[] = [
   { value: 'last_month', label: 'Mes pasado' },
   { value: 'this_quarter', label: 'Este trimestre' },
   { value: 'this_year', label: 'Este año' },
-];
-
-const STAGE_CATEGORIES: { value: StageCategory; label: string; color: string; description: string }[] = [
-  { value: 'new', label: 'Nuevas (Solicitudes)', color: 'bg-blue-500', description: 'Recién creadas → variable solicitudes' },
-  { value: 'in_progress', label: 'En proceso', color: 'bg-yellow-500', description: 'Siendo trabajadas' },
-  { value: 'advanced', label: 'Avanzadas', color: 'bg-purple-500', description: 'Progreso significativo → ventas_avanzadas' },
-  { value: 'won', label: 'Ganadas (Ventas)', color: 'bg-green-500', description: 'Cerradas exitosamente → ventas reales' },
-  { value: 'lost', label: 'Perdidas', color: 'bg-red-500', description: 'Canceladas o perdidas' },
 ];
 
 const FILTER_OPERATORS: { value: DataSourceFilter['operator']; label: string }[] = [
@@ -80,7 +72,6 @@ const DS_TEMPLATES = [
     config: {
       type: 'pipeline' as DataSourceType,
       dateRange: 'this_week' as DateRangeType,
-      stageCategories: ['new', 'advanced', 'won'] as StageCategory[],
       icon: '📊',
     },
   },
@@ -92,7 +83,6 @@ const DS_TEMPLATES = [
     config: {
       type: 'pipeline' as DataSourceType,
       dateRange: 'today' as DateRangeType,
-      stageCategories: ['advanced'] as StageCategory[],
       icon: '📞',
     },
   },
@@ -104,7 +94,6 @@ const DS_TEMPLATES = [
     config: {
       type: 'pipeline' as DataSourceType,
       dateRange: 'this_month' as DateRangeType,
-      stageCategories: ['new', 'won'] as StageCategory[],
       icon: '📅',
     },
   },
@@ -113,6 +102,15 @@ const DS_TEMPLATES = [
 // ==========================================================================
 // Helpers
 // ==========================================================================
+
+function toSlug(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
 
 function createEmptyDataSource(workspaceId: string): Omit<DataSource, 'id'> {
   return {
@@ -134,29 +132,13 @@ function createEmptyVariable(): DataSourceVariable {
 
 const createEmptyFilter = (): DataSourceFilter => ({ propertyName: '', operator: 'EQ', value: '' });
 
-/** Auto-generate standard variables based on selected stage categories */
-function autoGenerateVariables(stageCategories: StageCategory[]): DataSourceVariable[] {
-  const vars: DataSourceVariable[] = [];
-  if (stageCategories.includes('new')) {
-    vars.push({ key: 'solicitudes', label: 'Solicitudes creadas', type: 'number' });
-    vars.push({ key: 'meta_solicitudes', label: 'Meta de solicitudes', type: 'number' });
-    vars.push({ key: 'pct_solicitudes', label: '% avance solicitudes', type: 'percentage' });
-  }
-  if (stageCategories.includes('advanced')) {
-    vars.push({ key: 'ventas_avanzadas', label: 'Ventas en proceso ($)', type: 'currency' });
-    vars.push({ key: 'pct_ventas_avanzadas', label: '% ventas en proceso', type: 'percentage' });
-  }
-  if (stageCategories.includes('won')) {
-    vars.push({ key: 'ventas', label: 'Ventas reales ($)', type: 'currency' });
-    vars.push({ key: 'meta_ventas', label: 'Meta de ventas ($)', type: 'currency' });
-    vars.push({ key: 'pct_ventas', label: '% avance ventas', type: 'percentage' });
-  }
-  if (stageCategories.includes('new') || stageCategories.includes('won')) {
-    vars.push({ key: 'categoria', label: 'Categoría de desempeño', type: 'text' });
-    vars.push({ key: 'dias_restantes', label: 'Días restantes del período', type: 'number' });
-    vars.push({ key: 'progreso_esperado', label: '% progreso esperado', type: 'percentage' });
-  }
-  return vars;
+/** Auto-generate one variable per selected stage */
+function autoGenerateVariables(stages: Pick<PipelineStage, 'id' | 'name'>[]): DataSourceVariable[] {
+  return stages.map((s) => ({
+    key: toSlug(s.name),
+    label: s.name,
+    type: 'number' as const,
+  }));
 }
 
 // ==========================================================================
@@ -309,10 +291,13 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
 
   useEffect(() => {
     if (form.type !== 'pipeline') return;
-    const cats = form.stageCategories || [];
-    if (cats.length === 0) return;
-    setForm((prev) => ({ ...prev, variables: autoGenerateVariables(cats) }));
-  }, [form.stageCategories, form.type]);
+    const ids = form.stageIds || [];
+    if (ids.length === 0) return;
+    const pipeline = pipelines.find((p) => p.id === form.pipelineId);
+    if (!pipeline) return;
+    const selected = pipeline.stages.filter((s) => ids.includes(s.id));
+    setForm((prev) => ({ ...prev, variables: autoGenerateVariables(selected) }));
+  }, [form.stageIds, form.type, form.pipelineId, pipelines]);
 
   if (!selectedWorkspace) {
     return (
@@ -613,39 +598,44 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                     )}
                   </div>
 
-                  {/* Stage categories */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      ¿Qué etapas contar? <span className="text-xs text-gray-400 font-normal">— las variables se generan automáticamente</span>
-                    </label>
-                    <div className="space-y-2">
-                      {STAGE_CATEGORIES.map((cat) => {
-                        const checked = (form.stageCategories || []).includes(cat.value);
-                        return (
-                          <label key={cat.value} className="flex items-start space-x-3 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) => {
-                                const cats = form.stageCategories || [];
-                                setForm((p) => ({
-                                  ...p,
-                                  stageCategories: e.target.checked
-                                    ? [...cats, cat.value]
-                                    : cats.filter((c) => c !== cat.value),
-                                }));
-                              }}
-                              className="mt-0.5 rounded text-slack-purple"
-                            />
-                            <div>
-                              <span className="text-sm text-gray-700 font-medium">{cat.label}</span>
-                              <p className="text-xs text-gray-500">{cat.description}</p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  {/* Per-stage selector */}
+                  {(() => {
+                    const pipeline = pipelines.find((p) => p.id === form.pipelineId);
+                    if (!pipeline || pipeline.stages.length === 0) return null;
+                    return (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          ¿Qué etapas contar?{' '}
+                          <span className="text-xs text-gray-400 font-normal">— una variable por etapa seleccionada</span>
+                        </label>
+                        <div className="space-y-2">
+                          {pipeline.stages.map((stage) => {
+                            const checked = (form.stageIds || []).includes(stage.id);
+                            return (
+                              <label key={stage.id} className="flex items-center space-x-3 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const ids = form.stageIds || [];
+                                    setForm((p) => ({
+                                      ...p,
+                                      stageIds: e.target.checked
+                                        ? [...ids, stage.id]
+                                        : ids.filter((id) => id !== stage.id),
+                                    }));
+                                  }}
+                                  className="rounded text-slack-purple"
+                                />
+                                <span className="text-sm text-gray-700 font-medium flex-1">{stage.name}</span>
+                                <span className="text-xs text-gray-400 font-mono">{`{{${toSlug(stage.name)}}}`}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                 </div>
               )}
@@ -852,7 +842,7 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                 {form.variables.length === 0 ? (
                   <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm">
                     <Code2 className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                    {form.type === 'pipeline' && (form.stageCategories || []).length > 0
+                    {form.type === 'pipeline'
                       ? 'Las variables se generarán automáticamente al seleccionar las etapas'
                       : 'Haz clic en "Agregar" para definir las variables que exporta esta fuente'}
                   </div>
