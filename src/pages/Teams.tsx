@@ -1,49 +1,20 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { Plus, Trash2, Edit2, Users, Target, Activity, RefreshCw } from 'lucide-react';
+import { Users, Target, Activity, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { Timestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { salesUserService, workspaceService, positionService } from '@/services/firestore';
-import { useAuthStore } from '@/store/authStore';
 import type { SalesUser, SalesUserType, SlackWorkspace, Position } from '@/types';
 
-interface TeamFormData {
-  workspaceId: string;
-  nombre: string;
-  tipo: SalesUserType;
-  hubspotOwnerId: string;
-  slackUserId: string;
-  slackChannel: string;
-  metaSolicitudes: number;
-  metaVentas: number;
-  pipeline?: string;
-  equipo?: string;
-  gerenteId?: string;
-}
-
-
-const PIPELINES = [
-  { value: 'default', label: 'Pipeline Predeterminado' },
-  { value: '76732496', label: 'Pipeline BAs (76732496)' },
-];
 
 export function Teams() {
-  const { user } = useAuthStore();
   const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
   const [workspaces, setWorkspaces] = useState<SlackWorkspace[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>('');
   const [selectedType, setSelectedType] = useState<SalesUserType | 'all'>('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<SalesUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculatingMetrics, setCalculatingMetrics] = useState<Set<string>>(new Set());
   const [calculatingAll, setCalculatingAll] = useState(false);
-
-  const { register, handleSubmit, reset, watch } = useForm<TeamFormData>();
-
-  const tipoSeleccionado = watch('tipo');
 
   useEffect(() => {
     loadWorkspaces();
@@ -142,104 +113,6 @@ export function Teams() {
     }
   };
 
-  const openCreateModal = () => {
-    setEditingUser(null);
-    reset({
-      workspaceId: selectedWorkspace,
-      nombre: '',
-      tipo: 'kiosco',
-      hubspotOwnerId: '',
-      slackUserId: '',
-      slackChannel: '',
-      metaSolicitudes: 0,
-      metaVentas: 0,
-      pipeline: 'default',
-      equipo: '',
-      gerenteId: '',
-    });
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (salesUser: SalesUser) => {
-    setEditingUser(salesUser);
-    reset({
-      workspaceId: salesUser.workspaceId,
-      nombre: salesUser.nombre,
-      tipo: salesUser.tipo,
-      hubspotOwnerId: salesUser.hubspotOwnerId,
-      slackUserId: salesUser.slackUserId,
-      slackChannel: salesUser.slackChannel,
-      metaSolicitudes: salesUser.metaSolicitudes,
-      metaVentas: salesUser.metaVentas,
-      pipeline: salesUser.pipeline || 'default',
-      equipo: salesUser.equipo || '',
-      gerenteId: salesUser.gerenteId || '',
-    });
-    setIsModalOpen(true);
-  };
-
-  const onSubmit = async (data: TeamFormData) => {
-    try {
-      const salesUserData: any = {
-        workspaceId: data.workspaceId,
-        nombre: data.nombre,
-        tipo: data.tipo,
-        hubspotOwnerId: data.hubspotOwnerId,
-        slackUserId: data.slackUserId,
-        slackChannel: data.slackChannel,
-        metaSolicitudes: Number(data.metaSolicitudes),
-        metaVentas: Number(data.metaVentas),
-        pipeline: data.pipeline || 'default',
-        isActive: true,
-      };
-
-      // Agregar campos opcionales solo si tienen valor
-      if (data.equipo && data.equipo.trim()) {
-        salesUserData.equipo = data.equipo;
-      }
-      if (data.gerenteId && data.gerenteId.trim()) {
-        salesUserData.gerenteId = data.gerenteId;
-      }
-
-      if (editingUser) {
-        await salesUserService.update(editingUser.id, {
-          ...salesUserData,
-          updatedAt: Timestamp.now(),
-        });
-        toast.success('Usuario actualizado exitosamente');
-      } else {
-        await salesUserService.create({
-          ...salesUserData,
-          createdBy: user?.id || 'mock-user-id',
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        });
-        toast.success('Usuario creado exitosamente');
-      }
-
-      setIsModalOpen(false);
-      loadSalesUsers(selectedWorkspace);
-    } catch (error) {
-      toast.error('Error guardando usuario');
-      console.error(error);
-    }
-  };
-
-  const deleteUser = async (userId: string) => {
-    if (!confirm('¿Estás seguro de eliminar este usuario? Esta acción no se puede deshacer.')) {
-      return;
-    }
-
-    try {
-      await salesUserService.delete(userId);
-      toast.success('Usuario eliminado exitosamente');
-      loadSalesUsers(selectedWorkspace);
-    } catch (error) {
-      toast.error('Error eliminando usuario');
-      console.error(error);
-    }
-  };
-
   const filteredUsers = selectedType === 'all'
     ? salesUsers
     : salesUsers.filter(u => u.tipo === selectedType);
@@ -270,32 +143,23 @@ export function Teams() {
             Gestiona usuarios, metas y métricas de desempeño
           </p>
         </div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={calculateAllMetrics}
-            disabled={calculatingAll || filteredUsers.length === 0}
-            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {calculatingAll ? (
-              <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Calculando...</span>
-              </>
-            ) : (
-              <>
-                <Activity className="w-5 h-5" />
-                <span>Calcular Métricas</span>
-              </>
-            )}
-          </button>
-          <button
-            onClick={openCreateModal}
-            className="flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Agregar Usuario</span>
-          </button>
-        </div>
+        <button
+          onClick={calculateAllMetrics}
+          disabled={calculatingAll || filteredUsers.length === 0}
+          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {calculatingAll ? (
+            <>
+              <RefreshCw className="w-5 h-5 animate-spin" />
+              <span>Calculando...</span>
+            </>
+          ) : (
+            <>
+              <Activity className="w-5 h-5" />
+              <span>Calcular Métricas</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Workspace & Type Filters */}
@@ -378,16 +242,9 @@ export function Teams() {
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             No hay usuarios de ventas
           </h3>
-          <p className="text-gray-600 mb-6">
-            Comienza agregando tu primer usuario de ventas
+          <p className="text-gray-600">
+            Los usuarios se gestionan desde el proyecto externo de Firebase.
           </p>
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center space-x-2 px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Agregar Usuario</span>
-          </button>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -464,20 +321,6 @@ export function Teams() {
                       <Activity className="w-5 h-5" />
                     )}
                   </button>
-                  <button
-                    onClick={() => openEditModal(salesUser)}
-                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Editar usuario"
-                  >
-                    <Edit2 className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => deleteUser(salesUser.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Eliminar usuario"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
                 </div>
               </div>
             </div>
@@ -485,210 +328,6 @@ export function Teams() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full my-8">
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {editingUser ? 'Editar Usuario' : 'Nuevo Usuario de Ventas'}
-                </h2>
-              </div>
-
-              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Workspace */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Workspace *
-                    </label>
-                    <select
-                      {...register('workspaceId', { required: true })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                    >
-                      {workspaces.map((workspace) => (
-                        <option key={workspace.id} value={workspace.id}>
-                          {workspace.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Nombre */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre *
-                    </label>
-                    <input
-                      {...register('nombre', { required: true })}
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: Juan Pérez"
-                    />
-                  </div>
-
-                  {/* Tipo */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tipo de Usuario *
-                    </label>
-                    <select
-                      {...register('tipo', { required: true })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                    >
-                      <option value="">Selecciona una posición</option>
-                      {positions.map((pos) => (
-                        <option key={pos.id} value={pos.name}>
-                          {pos.name} — {pos.area}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* HubSpot Owner ID */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      HubSpot Owner ID *
-                    </label>
-                    <input
-                      {...register('hubspotOwnerId', { required: true })}
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: 123456789"
-                    />
-                  </div>
-
-                  {/* Slack User ID */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Slack User ID *
-                    </label>
-                    <input
-                      {...register('slackUserId', { required: true })}
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: U01234ABC"
-                    />
-                  </div>
-
-                  {/* Slack Channel */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Canal de Slack *
-                    </label>
-                    <input
-                      {...register('slackChannel', { required: true })}
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: C01234ABC o #nombre-canal"
-                    />
-                  </div>
-
-                  {/* Meta Solicitudes */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Meta Solicitudes Semanal *
-                    </label>
-                    <input
-                      {...register('metaSolicitudes', { required: true, valueAsNumber: true })}
-                      type="number"
-                      step="1"
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: 50"
-                    />
-                  </div>
-
-                  {/* Meta Ventas */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Meta Ventas Semanal (MXN) *
-                    </label>
-                    <input
-                      {...register('metaVentas', { required: true, valueAsNumber: true })}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                      placeholder="Ej: 500000"
-                    />
-                  </div>
-
-                  {/* Pipeline */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Pipeline
-                    </label>
-                    <select
-                      {...register('pipeline')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                    >
-                      {PIPELINES.map((pipeline) => (
-                        <option key={pipeline.value} value={pipeline.value}>
-                          {pipeline.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Equipo (opcional) */}
-                  {tipoSeleccionado && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Nombre del Equipo
-                        </label>
-                        <input
-                          {...register('equipo')}
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                          placeholder="Ej: Kiosco Centro"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          ID del Gerente
-                        </label>
-                        <input
-                          {...register('gerenteId')}
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent"
-                          placeholder="Opcional"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>Nota:</strong> Las metas son semanales. El sistema calculará
-                    automáticamente el progreso esperado según el día de la semana.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slack-purple text-white rounded-lg hover:bg-opacity-90 transition-colors"
-                >
-                  {editingUser ? 'Actualizar Usuario' : 'Crear Usuario'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
