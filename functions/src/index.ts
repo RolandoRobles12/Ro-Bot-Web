@@ -2524,12 +2524,17 @@ export const agentBuildCampaign = functions.https.onCall(
       throw new functions.https.HttpsError('invalid-argument', 'workspaceId requerido');
     }
 
-    // Get OpenAI API key from workspace settings
-    const settingsSnap = await db
-      .collection('workspace_settings')
-      .where('workspaceId', '==', workspaceId)
-      .limit(1)
-      .get();
+    // Load everything in parallel: API key, workspace context, memories
+    const [settingsSnap, pipelinesSnap, dataSourcesSnap, memoriesSnap] = await Promise.all([
+      db.collection('workspace_settings').where('workspaceId', '==', workspaceId).limit(1).get(),
+      db.collection('pipelines').where('workspaceId', '==', workspaceId).get(),
+      db.collection('data_sources').where('workspaceId', '==', workspaceId).get(),
+      db.collection('agent_memory')
+        .where('workspaceId', '==', workspaceId)
+        .orderBy('createdAt', 'desc')
+        .limit(8)
+        .get(),
+    ]);
 
     let apiKey = '';
     if (!settingsSnap.empty) {
@@ -2543,37 +2548,72 @@ export const agentBuildCampaign = functions.https.onCall(
       );
     }
 
-    const systemPrompt = `Eres un asistente de Ro-Bot, una plataforma que automatiza mensajes de Slack basados en datos de HubSpot CRM.
+    // Build workspace context snapshot for the system prompt
+    const pipelineContext = pipelinesSnap.docs.map((d: any) => {
+      const p = d.data();
+      const stages = (p.stages || []).map((s: any) => `  - ${s.name} (id: ${s.id}) → variable: {{${toSlug(s.name)}}}`).join('\n');
+      return `### Pipeline: "${p.name}" (id: ${d.id})\nEtapas:\n${stages || '  (sin etapas)'}`;
+    }).join('\n\n');
 
-Tu trabajo: ayudar a usuarios a crear Fuentes de Datos (DataSources) y Campañas de mensajes mediante conversación natural.
+    const dataSourceContext = dataSourcesSnap.docs.length > 0
+      ? dataSourcesSnap.docs.map((d: any) => {
+          const ds = d.data();
+          const vars = (ds.variables || []).map((v: any) => `{{${v.key}}}`).join(', ');
+          return `- "${ds.name}" (id: ${d.id}) → variables: ${vars}`;
+        }).join('\n')
+      : '(ninguna todavía)';
 
-## Conceptos de la plataforma
+    // Build memory context from past successful interactions
+    const memoryContext = memoriesSnap.docs.length > 0
+      ? '\n\n## Ejemplos de campañas creadas anteriormente en este workspace\nÚsalos como referencia de estilo y estructura:\n' +
+        memoriesSnap.docs.map((d: any) => {
+          const m = d.data();
+          return `- Solicitud: "${m.userRequest}"\n  Creó: ${JSON.stringify(m.created)}`;
+        }).join('\n')
+      : '';
+
+    const systemPrompt = `Eres el asistente de Ro-Bot, una plataforma que automatiza mensajes de Slack basados en datos de HubSpot CRM.
+
+Tu trabajo: ayudar a crear Fuentes de Datos (DataSources) y Campañas de mensajes mediante conversación natural. Conoces la plataforma a la perfección y actúas directamente — no pidas confirmación antes de crear, solo hazlo.
+
+## Plataforma Ro-Bot — Referencia completa
 
 ### DataSource (Fuente de Datos)
-- Se conecta a un pipeline de HubSpot y define qué etapas (stages) trackear
-- Variables generadas automáticamente:
-  - {{solicitudes}} — siempre incluida: total de deals creados en el período
-  - {{nombre_etapa}} — una por cada etapa seleccionada (nombre convertido a slug: "En Proceso" → {{en_proceso}})
-- filterByOwner: true = solo deals asignados al vendedor destinatario (default, recomendado)
-- dateRange: período de los datos ('today', 'current_week', 'current_month')
+Conecta con un pipeline de HubSpot y define qué etapas trackear para un período dado.
+Variables generadas automáticamente:
+- {{solicitudes}} — siempre incluida: total de deals creados/ingresados en el período
+- {{nombre_etapa_slug}} — una por cada etapa seleccionada (el nombre se convierte a minúsculas sin tildes ni espacios: "En Proceso" → {{en_proceso}}, "Aprobado" → {{aprobado}})
+- filterByOwner: true = solo deals asignados al vendedor que recibe el mensaje (default, casi siempre correcto)
+- dateRange: 'today' (datos del día), 'current_week' (semana en curso), 'current_month' (mes en curso)
 
 ### Campaign (Campaña)
-- Envía mensajes de Slack según un horario configurado
-- Usa variables {{variable}} del DataSource y siempre {{nombre}} (nombre del destinatario)
-- schedules: lista de horarios con días de la semana y hora
-- recipientType: 'sales_user_type' (por tipo: kiosco/atn/ba/alianza) o 'channel' (canal de Slack)
+Envía mensajes de Slack según un horario. Se crea como borrador (isActive: false) para que el usuario la revise.
+- messageTemplate: plantilla con {{variables}}. Siempre disponible: {{nombre}} (nombre del destinatario)
+- scheduleSlots: días de semana (0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb) + hora HH:mm
+- recipientType:
+  - 'sales_user_type': todos los vendedores de los tipos indicados (kiosco/atn/ba/alianza)
+  - 'channel': canal de Slack específico
+- Zona horaria: America/Mexico_City
+
+## Estado actual del workspace
+
+### Pipelines configurados
+${pipelineContext || '(no hay pipelines configurados)'}
+
+### Fuentes de datos existentes
+${dataSourceContext}
+${memoryContext}
 
 ## Tu flujo de trabajo
-1. Llama a listPipelines para ver pipelines disponibles ANTES de pedir información al usuario
-2. Si hay ambigüedad (ej: múltiples pipelines), haz UNA pregunta concisa
-3. Una vez claro lo que se necesita, crea el DataSource primero (recibirás los IDs y variables disponibles)
-4. Luego crea la Campaign usando el dataSourceId recibido
-5. Confirma lo que creaste con un resumen amigable
+1. Si el usuario quiere crear algo nuevo: llama a listPipelines si ya no tienes los IDs exactos
+2. Crea el DataSource primero (recibirás los IDs y variables exactas disponibles)
+3. Usa esas variables para construir el messageTemplate de la Campaign
+4. Crea la Campaign con el dataSourceId recibido
+5. Confirma lo creado con un resumen breve y amigable
 
-## Zona horaria por default: America/Mexico_City
-## Días: 0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb
+Si el usuario solo hace preguntas, respóndelas directamente usando el contexto del workspace de arriba.
 
-Responde siempre en español. Sé conciso y amigable.`;
+Responde siempre en español. Sé directo y amigable.`;
 
     const tools = [
       {
@@ -2839,6 +2879,18 @@ Responde siempre en español. Sé conciso y amigable.`;
         }
       }
       openaiMessages.push(...toolResults);
+    }
+
+    // Persist successful interactions as memory for future sessions
+    if (Object.keys(created).length > 0) {
+      const userRequest = [...messages].reverse().find((m: any) => m.role === 'user')?.content || '';
+      db.collection('agent_memory').add({
+        workspaceId,
+        userRequest,
+        agentResponse: finalMessage,
+        created,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch((err: any) => console.warn('agent_memory write failed:', err.message));
     }
 
     return {

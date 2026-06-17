@@ -718,6 +718,13 @@ export function DataSources({ embedded = false, onNavigateToPipelines }: DataSou
                                       return <option key={val} value={val}>{lbl}</option>;
                                     })}
                                   </select>
+                                ) : catalogProp?.type === 'date' ? (
+                                  <input
+                                    type="date"
+                                    value={f.value}
+                                    onChange={(e) => updateFilter(i, { value: e.target.value, displayValue: e.target.value })}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slack-purple"
+                                  />
                                 ) : (
                                   <input
                                     type="text"
