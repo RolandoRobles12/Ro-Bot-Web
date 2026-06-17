@@ -2548,10 +2548,10 @@ export const agentBuildCampaign = functions.https.onCall(
       db.collection('workspace_settings').where('workspaceId', '==', workspaceId).limit(1).get(),
       db.collection('pipelines').where('workspaceId', '==', workspaceId).get(),
       db.collection('data_sources').where('workspaceId', '==', workspaceId).get(),
-      db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).where('isActive', '==', true).get(),
+      db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).get(),
       db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
       getExternalDb().collection('sales_users').where('workspaceId', '==', workspaceId).get(),
-      db.collection('agent_memory').where('workspaceId', '==', workspaceId).orderBy('createdAt', 'desc').limit(6).get(),
+      db.collection('agent_memory').where('workspaceId', '==', workspaceId).limit(20).get(),
     ]);
 
     let apiKey = '';
@@ -2582,21 +2582,22 @@ export const agentBuildCampaign = functions.https.onCall(
         }).join('\n')
       : '  (ninguna todavía)';
 
-    // Properties: use descriptive format so the bot understands how to use them in filters
+    // Properties: filter isActive in JS to avoid composite index requirement
     const allPropsLines: string[] = [];
     hubspotPropsSnap.docs.forEach((d: any) => {
       const p = d.data();
+      if (p.isActive === false) return;
       const opts = p.type === 'enum' && p.enumOptions?.length
         ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
         : '';
-      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}  colección=hubspot_properties${opts}`);
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}${opts}`);
     });
     customPropsSnap.docs.forEach((d: any) => {
       const p = d.data();
       const opts = p.type === 'enum' && p.enumOptions?.length
         ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
         : '';
-      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}  colección=custom_properties${opts}`);
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}${opts}`);
     });
     const propertiesContext = allPropsLines.length > 0 ? allPropsLines.join('\n') : '  (ninguna configurada)';
 
@@ -2607,12 +2608,21 @@ export const agentBuildCampaign = functions.https.onCall(
         }).join('\n')
       : '  (no se encontraron usuarios)';
 
-    const memoryContext = memoriesSnap.docs.length > 0
+    // Sort memories by createdAt desc in JS (avoids composite index)
+    const sortedMemories = memoriesSnap.docs
+      .map((d: any) => ({ ...d.data(), _id: d.id }))
+      .sort((a: any, b: any) => {
+        const ta = a.createdAt?.toMillis?.() ?? 0;
+        const tb = b.createdAt?.toMillis?.() ?? 0;
+        return tb - ta;
+      })
+      .slice(0, 6);
+
+    const memoryContext = sortedMemories.length > 0
       ? '\n\n## Ejemplos de campañas creadas anteriormente\n' +
-        memoriesSnap.docs.map((d: any) => {
-          const m = d.data();
-          return `  • Solicitud: "${m.userRequest}"\n    Resultado: ${JSON.stringify(m.created)}`;
-        }).join('\n')
+        sortedMemories.map((m: any) =>
+          `  • Solicitud: "${m.userRequest}"\n    Resultado: ${JSON.stringify(m.created)}`
+        ).join('\n')
       : '';
 
     const systemPrompt = `Eres el asistente del Constructor IA de Ro-Bot, una plataforma que automatiza mensajes de Slack basados en datos de HubSpot CRM.
@@ -2813,11 +2823,13 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
 
       if (name === 'listProperties') {
         const [hp, cp] = await Promise.all([
-          db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).where('isActive', '==', true).get(),
+          db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).get(),
           db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
         ]);
         return {
-          hubspotProperties: hp.docs.map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
+          hubspotProperties: hp.docs
+            .filter((d: any) => d.data().isActive !== false)
+            .map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
           customProperties: cp.docs.map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
         };
       }
