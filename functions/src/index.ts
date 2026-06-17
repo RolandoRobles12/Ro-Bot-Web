@@ -2989,29 +2989,39 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
       if (pendingPlan && !confirming) break;
     }
 
-    // A conversation is "successful" when the user explicitly confirmed a plan and
-    // createDataSource / createCampaign were called. That means:
-    //   1. The bot showed a plan (showPlan)
-    //   2. The user clicked "Confirmar y crear" (confirming === true)
-    //   3. The tools actually ran and returned IDs
-    // We store these as examples so future conversations can learn from them.
-    if (Object.keys(created).length > 0 && confirming) {
-      // Pull the original user intent from the first user message in this session
-      const firstUserMsg = messages.find((m: any) => m.role === 'user')?.content || '';
-      db.collection('agent_memory').add({
-        workspaceId,
-        userRequest: firstUserMsg,
-        agentResponse: finalMessage,
-        created,
-        // Future: add a `rating` field here when user feedback is implemented
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      }).catch((err: any) => console.warn('agent_memory write failed:', err.message));
-    }
+    // Memory is NOT saved automatically — the user must rate the conversation
+    // via rateAgentConversation (thumbs up = save as positive example).
 
     return {
       message: finalMessage,
       plan: pendingPlan || undefined,
       created: Object.keys(created).length > 0 ? created : undefined,
     };
+  }
+);
+
+// Saves a conversation to agent_memory only when the user explicitly rates it positive.
+// Negative ratings are stored too (with rating field) for analysis, but not used as examples.
+export const rateAgentConversation = functions.https.onCall(
+  async (data: {
+    workspaceId: string;
+    userRequest: string;
+    created: Record<string, any>;
+    rating: 'positive' | 'negative';
+  }) => {
+    const { workspaceId, userRequest, created, rating } = data;
+    if (!workspaceId) {
+      throw new functions.https.HttpsError('invalid-argument', 'workspaceId requerido');
+    }
+
+    await db.collection('agent_memory').add({
+      workspaceId,
+      userRequest,
+      created,
+      rating,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true };
   }
 );

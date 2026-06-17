@@ -86,6 +86,16 @@ export const agentBuildCampaign = httpsCallable<
   }
 >(functions, 'agentBuildCampaign');
 
+export const rateAgentConversation = httpsCallable<
+  {
+    workspaceId: string;
+    userRequest: string;
+    created: Record<string, any>;
+    rating: 'positive' | 'negative';
+  },
+  { success: boolean }
+>(functions, 'rateAgentConversation');
+
 export const calculateSalesMetrics = httpsCallable<
   {
     salesUserId: string;

@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   Bot, Send, Sparkles, ExternalLink, Database, CalendarClock,
   RefreshCw, CheckCircle, XCircle, Clock, Users, FileText,
+  ThumbsUp, ThumbsDown,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import { agentBuildCampaign } from '@/services/cloudFunctions';
+import { agentBuildCampaign, rateAgentConversation } from '@/services/cloudFunctions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,6 +39,9 @@ interface ChatMessage {
     dataSource?: { id: string; name: string; availableVariables: string[] };
     campaign?: { id: string; name: string };
   };
+  rated?: 'positive' | 'negative';
+  // first user message in the session, stored so we can save it to memory on rating
+  _sessionUserRequest?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +177,41 @@ function PlanCard({
   );
 }
 
+function FeedbackBar({
+  rated,
+  onRate,
+}: {
+  rated?: 'positive' | 'negative';
+  onRate: (r: 'positive' | 'negative') => void;
+}) {
+  if (rated) {
+    return (
+      <p className="text-xs text-gray-400 flex items-center gap-1.5 pl-1">
+        {rated === 'positive'
+          ? <><ThumbsUp className="w-3.5 h-3.5 text-emerald-500" /> Guardado como ejemplo para el asistente</>
+          : <><ThumbsDown className="w-3.5 h-3.5 text-gray-400" /> Gracias por el feedback</>}
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 pl-1">
+      <span className="text-xs text-gray-400">¿Fue útil esta conversación?</span>
+      <button
+        onClick={() => onRate('positive')}
+        className="flex items-center gap-1 px-2 py-1 text-xs text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
+      >
+        <ThumbsUp className="w-3 h-3" /> Sí
+      </button>
+      <button
+        onClick={() => onRate('negative')}
+        className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+      >
+        <ThumbsDown className="w-3 h-3" /> No
+      </button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -248,9 +287,18 @@ export function AgentBuilder() {
 
         const { message, plan, created } = result.data;
 
+        // Capture the first user intent so it can be saved to memory on rating
+        const firstUserMsg = nextMessages.find((m) => m.role === 'user')?.content || '';
+
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: message, plan, created },
+          {
+            role: 'assistant',
+            content: message,
+            plan,
+            created,
+            _sessionUserRequest: created ? firstUserMsg : undefined,
+          },
         ]);
       } catch (err: any) {
         const msg = err?.message?.includes('OpenAI API key')
@@ -264,6 +312,31 @@ export function AgentBuilder() {
     },
     [messages, loading, selectedWorkspace]
   );
+
+  async function rateConversation(msgIndex: number, rating: 'positive' | 'negative') {
+    if (!selectedWorkspace) return;
+    const msg = messages[msgIndex];
+    if (!msg.created) return;
+
+    // Mark as rated immediately in UI
+    setMessages((prev) =>
+      prev.map((m, i) => (i === msgIndex ? { ...m, rated: rating } : m))
+    );
+
+    // Persist to localStorage
+    // (the useEffect watching messages will handle it)
+
+    try {
+      await rateAgentConversation({
+        workspaceId: selectedWorkspace.id,
+        userRequest: msg._sessionUserRequest || '',
+        created: msg.created as Record<string, any>,
+        rating,
+      });
+    } catch (err) {
+      console.warn('Failed to save rating:', err);
+    }
+  }
 
   function confirmPlan(msgIndex: number) {
     // Mark the message as confirmed
@@ -375,6 +448,14 @@ export function AgentBuilder() {
                   </span>
                   <ExternalLink className="w-3 h-3 flex-shrink-0" />
                 </button>
+              )}
+
+              {/* Feedback bar — only shown after creation */}
+              {msg.created && (
+                <FeedbackBar
+                  rated={msg.rated}
+                  onRate={(r) => rateConversation(i, r)}
+                />
               )}
 
               {/* Suggestion chips on welcome message only */}
