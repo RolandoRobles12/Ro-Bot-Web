@@ -27,6 +27,8 @@ interface AgentPlan {
     schedules: { daysOfWeek: number[]; time: string; label?: string }[];
     recipientType: string;
     salesUserTypes?: string[];
+    specificUserIds?: string[];
+    specificUserNames?: string[];
   };
 }
 
@@ -128,11 +130,15 @@ function PlanCard({
                   `${s.daysOfWeek.map(d => DAY_NAMES[d]).join('/')} ${s.time}`
                 ).join(' · ')}</span>
               </p>
-              <p className="flex items-center gap-1">
+              <p className="flex items-center gap-1 flex-wrap">
                 <span className="text-gray-400">Destinatarios:</span>
-                <Users className="w-3 h-3" />
+                <Users className="w-3 h-3 flex-shrink-0" />
                 {plan.campaign.recipientType === 'sales_user_type'
                   ? (plan.campaign.salesUserTypes?.length ? plan.campaign.salesUserTypes.join(', ') : 'todos los tipos')
+                  : plan.campaign.recipientType === 'specific_users'
+                  ? (plan.campaign.specificUserNames?.length
+                      ? plan.campaign.specificUserNames.join(', ')
+                      : `${plan.campaign.specificUserIds?.length ?? 0} usuario(s) específico(s)`)
                   : 'canal de Slack'}
               </p>
               <div>

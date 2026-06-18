@@ -2651,10 +2651,17 @@ Cuando el usuario diga "Confirmado" o similar, procede a crear.
 - Se crea como BORRADOR (inactiva) — el usuario la activa cuando quiera
 - messageTemplate: plantilla con {{variables}}. Siempre disponible: {{nombre}}
 - scheduleSlots: días semana (0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb) + hora HH:mm
-- recipientType:
-    "sales_user_type" → por tipo de vendedor: kiosco | atn | ba | alianza
-    "channel" → canal de Slack específico
+- recipientType (elige uno):
+    "sales_user_type" → todos los del tipo indicado (kiosco | atn | ba | alianza). Con filterByOwner=true en el DataSource, cada quien ve solo SUS datos.
+    "specific_users"  → lista de IDs exactos de usuarios (specificUserIds)
+    "channel"         → canal de Slack específico
 - Zona horaria: America/Mexico_City
+
+## Regla sobre usuarios específicos
+Si el usuario pide enviar a una persona por nombre (ej: "a Rolando Robles"):
+1. Llama a listUsers para buscarlo
+2. Si lo encuentras → usa recipientType="specific_users" con su id
+3. Si NO lo encuentras → NO te bloquees. Explica brevemente que no pudiste localizar al usuario en el sistema, pregunta su tipo (kiosco/atn/ba/alianza) y procede con "sales_user_type". Con filterByOwner=true cada vendedor solo ve sus propios datos, por lo que el mensaje sigue siendo personalizado.
 
 ## Estado actual del workspace
 
@@ -2759,8 +2766,10 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
                       },
                     },
                   },
-                  recipientType: { type: 'string' },
+                  recipientType: { type: 'string', enum: ['sales_user_type', 'specific_users', 'channel'] },
                   salesUserTypes: { type: 'array', items: { type: 'string' } },
+                  specificUserIds: { type: 'array', items: { type: 'string' }, description: 'IDs de usuarios específicos (solo si recipientType=specific_users)' },
+                  specificUserNames: { type: 'array', items: { type: 'string' }, description: 'Nombres de los usuarios para mostrar en el plan' },
                 },
                 required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
               },
@@ -2809,8 +2818,11 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
                   required: ['daysOfWeek', 'time'],
                 },
               },
-              recipientType: { type: 'string', enum: ['sales_user_type', 'channel'] },
-              salesUserTypes: { type: 'array', items: { type: 'string' } },
+              recipientType: { type: 'string', enum: ['sales_user_type', 'specific_users', 'channel'],
+                description: '"sales_user_type"=por tipo, "specific_users"=IDs exactos, "channel"=canal Slack',
+              },
+              salesUserTypes: { type: 'array', items: { type: 'string' }, description: 'Solo si recipientType=sales_user_type' },
+              specificUserIds: { type: 'array', items: { type: 'string' }, description: 'IDs de usuarios. Solo si recipientType=specific_users' },
               dataSourceId: { type: 'string' },
             },
             required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
@@ -2902,7 +2914,7 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
       }
 
       if (name === 'createCampaign') {
-        const { name: campName, messageTemplate, schedules, recipientType, salesUserTypes, dataSourceId } = args;
+        const { name: campName, messageTemplate, schedules, recipientType, salesUserTypes, specificUserIds, dataSourceId } = args;
 
         const scheduleSlots = schedules.map((s: any, i: number) => ({
           id: `slot_${i}`,
@@ -2917,6 +2929,8 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
           recipientConfig.salesUserTypes = salesUserTypes && salesUserTypes.length > 0
             ? salesUserTypes
             : ['kiosco', 'atn', 'ba', 'alianza'];
+        } else if (recipientType === 'specific_users') {
+          recipientConfig.specificUserIds = specificUserIds || [];
         }
 
         const dataConfig = dataSourceId ? {
