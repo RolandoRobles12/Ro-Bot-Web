@@ -2550,7 +2550,9 @@ export const agentBuildCampaign = functions.https.onCall(
       db.collection('data_sources').where('workspaceId', '==', workspaceId).get(),
       db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).get(),
       db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
-      getExternalDb().collection('sales_users').where('workspaceId', '==', workspaceId).get(),
+      getExternalDb().collection('sales_users').where('workspaceId', '==', workspaceId).get().then(async (s: any) =>
+        s.empty ? getExternalDb().collection('sales_users').limit(200).get() : s
+      ),
       db.collection('agent_memory').where('workspaceId', '==', workspaceId).limit(20).get(),
     ]);
 
@@ -2845,8 +2847,7 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
 
       if (name === 'listUsers') {
         const extDb = getExternalDb();
-        const snap = await extDb.collection('sales_users').where('workspaceId', '==', workspaceId).get();
-        return snap.docs.map((d: any) => {
+        const toUser = (d: any) => {
           const u = d.data();
           return {
             id: d.id,
@@ -2854,8 +2855,19 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
             tipo: u.tipo || u.type || null,
             email: u.email || null,
             hubspotOwnerId: u.hubspotOwnerId || null,
+            workspaceId: u.workspaceId || null,
           };
-        });
+        };
+
+        // Try with workspaceId filter first
+        let snap = await extDb.collection('sales_users').where('workspaceId', '==', workspaceId).get();
+
+        // Fallback: workspaceId may not match in external project — get all users
+        if (snap.empty) {
+          snap = await extDb.collection('sales_users').limit(200).get();
+        }
+
+        return snap.docs.map(toUser);
       }
 
       if (name === 'createDataSource') {
