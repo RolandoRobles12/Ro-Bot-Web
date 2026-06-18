@@ -2675,9 +2675,10 @@ ${memoryContext}
 ## Flujo obligatorio
 1. Recopila la información necesaria (pipeline, horario, destinatarios, mensaje)
 2. Si no tienes los IDs exactos del pipeline, llama a listPipelines
-3. Llama a showPlan con el plan estructurado → espera confirmación
-4. Cuando el usuario confirme, llama createDataSource → luego createCampaign
-5. Confirma lo creado con un resumen amigable
+3. Si el usuario menciona a alguien por nombre y no lo encuentras arriba, llama a listUsers — NUNCA digas que no tienes acceso a los usuarios
+4. Llama a showPlan con el plan estructurado → espera confirmación
+5. Cuando el usuario confirme, llama createDataSource → luego createCampaign
+6. Confirma lo creado con un resumen amigable
 
 Responde siempre en español. Sé directo, conciso y amigable.`;
 
@@ -2705,6 +2706,14 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
         function: {
           name: 'listProperties',
           description: 'Lista todas las propiedades de HubSpot configuradas (para usar en filtros adicionales de DataSources)',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listUsers',
+          description: 'Lista todos los vendedores del workspace con su nombre, tipo, email e id. Úsalo cuando el usuario mencione a alguien por nombre o pida buscar a un usuario.',
           parameters: { type: 'object', properties: {} },
         },
       },
@@ -2832,6 +2841,21 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
             .map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
           customProperties: cp.docs.map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
         };
+      }
+
+      if (name === 'listUsers') {
+        const extDb = getExternalDb();
+        const snap = await extDb.collection('sales_users').where('workspaceId', '==', workspaceId).get();
+        return snap.docs.map((d: any) => {
+          const u = d.data();
+          return {
+            id: d.id,
+            nombre: u.nombre || u.name || d.id,
+            tipo: u.tipo || u.type || null,
+            email: u.email || null,
+            hubspotOwnerId: u.hubspotOwnerId || null,
+          };
+        });
       }
 
       if (name === 'createDataSource') {
@@ -2965,22 +2989,39 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
       if (pendingPlan && !confirming) break;
     }
 
-    // Save memory on successful creation
-    if (Object.keys(created).length > 0) {
-      const userRequest = [...messages].reverse().find((m: any) => m.role === 'user')?.content || '';
-      db.collection('agent_memory').add({
-        workspaceId,
-        userRequest,
-        agentResponse: finalMessage,
-        created,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      }).catch((err: any) => console.warn('agent_memory write failed:', err.message));
-    }
+    // Memory is NOT saved automatically — the user must rate the conversation
+    // via rateAgentConversation (thumbs up = save as positive example).
 
     return {
       message: finalMessage,
       plan: pendingPlan || undefined,
       created: Object.keys(created).length > 0 ? created : undefined,
     };
+  }
+);
+
+// Saves a conversation to agent_memory only when the user explicitly rates it positive.
+// Negative ratings are stored too (with rating field) for analysis, but not used as examples.
+export const rateAgentConversation = functions.https.onCall(
+  async (data: {
+    workspaceId: string;
+    userRequest: string;
+    created: Record<string, any>;
+    rating: 'positive' | 'negative';
+  }) => {
+    const { workspaceId, userRequest, created, rating } = data;
+    if (!workspaceId) {
+      throw new functions.https.HttpsError('invalid-argument', 'workspaceId requerido');
+    }
+
+    await db.collection('agent_memory').add({
+      workspaceId,
+      userRequest,
+      created,
+      rating,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true };
   }
 );
