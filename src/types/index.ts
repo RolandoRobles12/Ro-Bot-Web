@@ -572,6 +572,7 @@ export interface CampaignScheduleSlot {
   time: string;               // HH:mm format
   timezone: string;           // e.g., 'America/Mexico_City'
   label?: string;             // e.g., "Reporte matutino"
+  attachments?: MessageAttachment[];  // If set, overrides campaign-level attachments for this slot
 }
 
 /**

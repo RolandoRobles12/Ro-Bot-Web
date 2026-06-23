@@ -49,6 +49,7 @@ import type {
   CampaignScheduleSlot,
   CampaignRecipientConfig,
   MessageVariant,
+  MessageAttachment,
   CampaignAIConfig,
   CampaignDataConfig,
   CampaignDataSourceRef,
@@ -1168,9 +1169,16 @@ function StepMessage({
     onChange({ messageVariants: [...variants, ...copies] });
   };
 
-  // Elimina las variantes propias del slot (vuelve a usar las globales)
+  // Elimina las variantes propias del slot (vuelve a usar las globales) y borra adjuntos del slot
   const revertSlot = (slotId: string) => {
-    onChange({ messageVariants: variants.filter((v) => v.scheduleSlotId !== slotId) });
+    onChange({
+      messageVariants: variants.filter((v) => v.scheduleSlotId !== slotId),
+      scheduleSlots: slots.map((s) => s.id === slotId ? { ...s, attachments: [] } : s),
+    });
+  };
+
+  const updateSlotAttachments = (slotId: string, attachments: MessageAttachment[]) => {
+    onChange({ scheduleSlots: slots.map((s) => s.id === slotId ? { ...s, attachments } : s) });
   };
 
   const togglePerformanceCategory = (variantId: string, category: CategoriaDesempeno) => {
@@ -1328,7 +1336,19 @@ function StepMessage({
       {/* Contenido de la pestaña activa */}
       {activeTab === null ? (
         // Pestaña global
-        renderVariants(globalVariants)
+        <div className="space-y-6">
+          {renderVariants(globalVariants)}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Archivos adjuntos globales (se envían en todos los horarios sin adjuntos propios)
+            </label>
+            <FileUpload
+              workspaceId={workspaceId}
+              value={campaign.attachments || []}
+              onChange={(attachments) => onChange({ attachments })}
+            />
+          </div>
+        </div>
       ) : (
         // Pestaña de un slot específico
         slotHasOwn(activeTab) ? (
@@ -1341,6 +1361,16 @@ function StepMessage({
               </button>
             </div>
             {renderVariants(slotVariants(activeTab), activeTab)}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Archivos adjuntos para este horario (reemplaza los globales)
+              </label>
+              <FileUpload
+                workspaceId={workspaceId}
+                value={slots.find((s) => s.id === activeTab)?.attachments || []}
+                onChange={(attachments) => updateSlotAttachments(activeTab, attachments)}
+              />
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
@@ -1353,18 +1383,6 @@ function StepMessage({
           </div>
         )
       )}
-
-      {/* Attachments */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Archivos adjuntos (se envían en todos los mensajes de esta campaña)
-        </label>
-        <FileUpload
-          workspaceId={workspaceId}
-          value={campaign.attachments || []}
-          onChange={(attachments) => onChange({ attachments })}
-        />
-      </div>
 
       {/* AI Configuration */}
       <div className="border border-gray-200 rounded-lg overflow-hidden">

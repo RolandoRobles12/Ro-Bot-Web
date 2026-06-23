@@ -626,6 +626,18 @@ export const campaignExecutionService = {
       orderBy('executedAt', 'desc'),
       limit(limitCount)
     ),
+  subscribeByWorkspace: (
+    workspaceId: string,
+    callback: (executions: CampaignExecution[]) => void,
+    limitCount = 20
+  ) =>
+    subscribeToCollection<CampaignExecution>(
+      'campaign_executions',
+      callback,
+      where('workspaceId', '==', workspaceId),
+      orderBy('executedAt', 'desc'),
+      limit(limitCount)
+    ),
 };
 
 // ==========================================================================

@@ -1373,9 +1373,11 @@ async function executeCampaign(
         channel: recipient.slackChannel,
         text: displayMessage,
       });
-      if (campaign.attachments && campaign.attachments.length > 0) {
+      const effectiveAttachments =
+        scheduleSlot.attachments?.length > 0 ? scheduleSlot.attachments : campaign.attachments;
+      if (effectiveAttachments && effectiveAttachments.length > 0) {
         const resolvedChannelId = (msgResult.channel as string) || recipient.slackChannel;
-        await uploadAttachmentsToSlack(token, resolvedChannelId, campaign.attachments);
+        await uploadAttachmentsToSlack(token, resolvedChannelId, effectiveAttachments);
       }
 
       executionDetails.push({
