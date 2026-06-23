@@ -76,10 +76,10 @@ export async function updateDocument(
   data: Partial<DocumentData>
 ): Promise<void> {
   const docRef = doc(db, collectionName, docId);
-  await updateDoc(docRef, {
-    ...data,
-    updatedAt: Timestamp.now(),
-  });
+  const payload = Object.fromEntries(
+    Object.entries({ ...data, updatedAt: Timestamp.now() }).filter(([, v]) => v !== undefined)
+  );
+  await updateDoc(docRef, payload);
 }
 
 export async function deleteDocument(

@@ -2952,12 +2952,8 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
             : ['kiosco', 'atn', 'ba', 'alianza'];
         }
 
-        const dataConfig = dataSourceId ? {
-          fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false,
-          fetchVideollamadas: false, calculatePerformanceCategory: false,
-          dateRange: 'today',
-          dataSources: [{ dataSourceId }],
-        } : undefined;
+        // dataSourceId is stored directly so resolveDataConfig() can pick it up
+        const dataConfig = dataSourceId ? { dataSourceId } : undefined;
 
         const docRef = await db.collection('campaigns').add({
           workspaceId,
@@ -2966,7 +2962,7 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
           scheduleSlots,
           recipientConfig,
           messageVariants: [{ id: 'variant_1', label: 'Mensaje principal', conditionType: 'always', messageTemplate, priority: 1 }],
-          mentionUser: true,
+          mentionUser: false,
           isActive: false,
           executionCount: 0,
           ...(dataConfig && { dataConfig }),
@@ -3152,11 +3148,11 @@ export const agentStream = functions.https.onRequest(async (req, res) => {
       const opts = p.type === 'enum' && p.enumOptions?.length
         ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
         : '';
-      allPropsLines.push(`  • nombre_interno="${p.name}"  tipo=${p.type}${opts}`);
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label || p.name}"  tipo=${p.type}${opts}`);
     });
     customPropsSnap.docs.forEach((d: any) => {
       const p = d.data();
-      allPropsLines.push(`  • nombre_interno="${p.name}"  tipo=${p.type}`);
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label || p.name}"  tipo=${p.type}`);
     });
     const propertiesContext = allPropsLines.length > 0 ? allPropsLines.join('\n') : '  (ninguna configurada)';
 
@@ -3491,15 +3487,11 @@ Responde siempre en español. Sé directo, conciso y amigable.`;
         if (recipientType === 'sales_user_type') {
           recipientConfig.salesUserTypes = salesUserTypes?.length > 0 ? salesUserTypes : ['kiosco', 'atn', 'ba', 'alianza'];
         }
-        const dataConfig = dataSourceId ? {
-          fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false,
-          fetchVideollamadas: false, calculatePerformanceCategory: false, dateRange: 'today',
-          dataSources: [{ dataSourceId }],
-        } : undefined;
+        const dataConfig = dataSourceId ? { dataSourceId } : undefined;
         const docRef = await db.collection('campaigns').add({
           workspaceId, name: campName, campaignType: 'standard', scheduleSlots, recipientConfig,
           messageVariants: [{ id: 'variant_1', label: 'Mensaje principal', conditionType: 'always', messageTemplate, priority: 1 }],
-          mentionUser: true, isActive: false, executionCount: 0,
+          mentionUser: false, isActive: false, executionCount: 0,
           ...(dataConfig && { dataConfig }),
           createdBy: 'agent',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
