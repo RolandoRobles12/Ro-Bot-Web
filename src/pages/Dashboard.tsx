@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { useAppStore } from '@/store/appStore';
-import { scheduledMessageService, messageHistoryService, campaignExecutionService } from '@/services/firestore';
-import { ScheduledMessage, MessageHistory, CampaignExecution } from '@/types';
+import {
+  scheduledMessageService,
+  messageHistoryService,
+  campaignExecutionService,
+  campaignService,
+} from '@/services/firestore';
+import {
+  ScheduledMessage,
+  MessageHistory,
+  CampaignExecution,
+  MessageCampaign,
+  CampaignScheduleSlot,
+} from '@/types';
 import { MessageSquare, Calendar, Clock, TrendingUp, Megaphone } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -10,9 +21,65 @@ type ActivityItem =
   | { kind: 'history'; data: MessageHistory }
   | { kind: 'campaign'; data: CampaignExecution };
 
+type UpcomingItem =
+  | { kind: 'message'; data: ScheduledMessage }
+  | { kind: 'campaign'; data: MessageCampaign; nextAt: Date; slot: CampaignScheduleSlot };
+
+/**
+ * Computes the next UTC Date when a schedule slot will fire.
+ * Uses the slot's timezone to determine day-of-week boundaries.
+ */
+function getNextSlotOccurrence(slot: CampaignScheduleSlot): Date {
+  const tz = slot.timezone || 'America/Mexico_City';
+  const [slotH, slotM] = slot.time.split(':').map(Number);
+  const days = slot.daysOfWeek;
+  if (!days.length) return new Date(Date.now() + 365 * 86400000);
+
+  const now = new Date();
+  // Express "now" in the target timezone by leveraging toLocaleString
+  const tzNow = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  const tzDow = tzNow.getDay();
+  const tzH = tzNow.getHours();
+  const tzM = tzNow.getMinutes();
+
+  let minDaysAhead = Infinity;
+  for (const dow of days) {
+    let ahead = (dow - tzDow + 7) % 7;
+    if (ahead === 0 && (slotH < tzH || (slotH === tzH && slotM <= tzM))) {
+      ahead = 7;
+    }
+    if (ahead < minDaysAhead) minDaysAhead = ahead;
+  }
+
+  if (!isFinite(minDaysAhead)) return new Date(Date.now() + 365 * 86400000);
+
+  const nextInTz = new Date(tzNow);
+  nextInTz.setDate(nextInTz.getDate() + minDaysAhead);
+  nextInTz.setHours(slotH, slotM, 0, 0);
+
+  // Compute UTC equivalent: tzNow represents wall-clock of "now" in the target
+  // timezone but stored in local offset, so the delta gives us the tz offset.
+  const tzOffset = now.getTime() - tzNow.getTime();
+  return new Date(nextInTz.getTime() + tzOffset);
+}
+
+function getNextCampaignOccurrence(campaign: MessageCampaign): { nextAt: Date; slot: CampaignScheduleSlot } | null {
+  if (!campaign.scheduleSlots?.length) return null;
+
+  let best: { nextAt: Date; slot: CampaignScheduleSlot } | null = null;
+  for (const slot of campaign.scheduleSlots) {
+    const nextAt = getNextSlotOccurrence(slot);
+    if (!best || nextAt < best.nextAt) best = { nextAt, slot };
+  }
+  return best;
+}
+
+const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
 export function Dashboard() {
   const { selectedWorkspace } = useAppStore();
   const [upcomingMessages, setUpcomingMessages] = useState<ScheduledMessage[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<MessageCampaign[]>([]);
   const [recentHistory, setRecentHistory] = useState<MessageHistory[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<CampaignExecution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +90,14 @@ export function Dashboard() {
     const unsubscribe1 = scheduledMessageService.subscribe(
       selectedWorkspace.id,
       (messages) => {
-        setUpcomingMessages(messages.filter((m) => m.status === 'scheduled').slice(0, 5));
+        setUpcomingMessages(messages.filter((m) => m.status === 'scheduled'));
+      }
+    );
+
+    const unsubscribe4 = campaignService.subscribe(
+      selectedWorkspace.id,
+      (campaigns) => {
+        setActiveCampaigns(campaigns.filter((c) => c.isActive));
       }
     );
 
@@ -57,6 +131,7 @@ export function Dashboard() {
       unsubscribe1();
       unsubscribe2();
       unsubscribe3();
+      unsubscribe4();
     };
   }, [selectedWorkspace]);
 
@@ -92,10 +167,25 @@ export function Dashboard() {
       .filter((e) => e.executedAt.toDate().toDateString() === today)
       .reduce((sum, e) => sum + e.failureCount, 0);
 
+  // Build upcoming items: manual messages + active campaign next fires
+  const upcomingItems: UpcomingItem[] = [
+    ...upcomingMessages.slice(0, 5).map((m): UpcomingItem => ({ kind: 'message', data: m })),
+    ...activeCampaigns
+      .map((c): UpcomingItem | null => {
+        const next = getNextCampaignOccurrence(c);
+        return next ? { kind: 'campaign', data: c, ...next } : null;
+      })
+      .filter((x): x is UpcomingItem => x !== null),
+  ].sort((a, b) => {
+    const tA = a.kind === 'message' ? a.data.scheduledAt.toDate() : a.nextAt;
+    const tB = b.kind === 'message' ? b.data.scheduledAt.toDate() : b.nextAt;
+    return tA.getTime() - tB.getTime();
+  }).slice(0, 8);
+
   const stats = [
     {
       name: 'Mensajes Próximos',
-      value: upcomingMessages.length,
+      value: upcomingItems.length,
       icon: Calendar,
       color: 'text-slack-blue',
       bgColor: 'bg-slack-blue/10',
@@ -162,39 +252,64 @@ export function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Mensajes Próximos</CardTitle>
-            <CardDescription>Próximos mensajes programados</CardDescription>
+            <CardDescription>Mensajes programados y próximas campañas activas</CardDescription>
           </CardHeader>
 
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slack-purple mx-auto"></div>
             </div>
-          ) : upcomingMessages.length === 0 ? (
+          ) : upcomingItems.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Clock className="w-12 h-12 mx-auto mb-2 text-gray-400" />
               <p>No hay mensajes próximos</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {upcomingMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className="p-4 bg-gray-50 rounded-lg border border-gray-200"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900">{message.name}</h4>
-                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                        {message.content}
-                      </p>
+              {upcomingItems.map((item) => {
+                if (item.kind === 'message') {
+                  const m = item.data;
+                  return (
+                    <div key={`m-${m.id}`} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-gray-900">{m.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1 line-clamp-2">{m.content}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center mt-3 text-sm text-gray-500">
+                        <Clock className="w-4 h-4 mr-1" />
+                        {format(m.scheduledAt.toDate(), 'MMM dd, yyyy HH:mm')}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const c = item.data;
+                const slotDays = item.slot.daysOfWeek.map((d) => DAY_LABELS[d]).join(', ');
+                return (
+                  <div key={`c-${c.id}-${item.slot.id}`} className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <Megaphone className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                          <h4 className="font-medium text-gray-900 truncate">{c.name}</h4>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {item.slot.label ? `${item.slot.label} · ` : ''}{slotDays} · {item.slot.time}
+                        </p>
+                      </div>
+                      <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700 whitespace-nowrap shrink-0">
+                        campaña
+                      </span>
+                    </div>
+                    <div className="flex items-center mt-3 text-sm text-gray-500">
+                      <Clock className="w-4 h-4 mr-1" />
+                      {format(item.nextAt, 'MMM dd, yyyy HH:mm')}
                     </div>
                   </div>
-                  <div className="flex items-center mt-3 text-sm text-gray-500">
-                    <Clock className="w-4 h-4 mr-1" />
-                    {format(message.scheduledAt.toDate(), 'MMM dd, yyyy HH:mm')}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>
@@ -221,15 +336,10 @@ export function Dashboard() {
                 if (item.kind === 'history') {
                   const h = item.data;
                   return (
-                    <div
-                      key={`h-${h.id}`}
-                      className="p-4 bg-gray-50 rounded-lg border border-gray-200"
-                    >
+                    <div key={`h-${h.id}`} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <p className="text-sm text-gray-900 line-clamp-2">
-                            {h.content}
-                          </p>
+                          <p className="text-sm text-gray-900 line-clamp-2">{h.content}</p>
                           <p className="text-xs text-gray-500 mt-1">
                             Para: {h.recipients.map((r) => r.name).join(', ')}
                           </p>
@@ -253,10 +363,7 @@ export function Dashboard() {
 
                 const e = item.data;
                 return (
-                  <div
-                    key={`e-${e.id}`}
-                    className="p-4 bg-purple-50 rounded-lg border border-purple-200"
-                  >
+                  <div key={`e-${e.id}`} className="p-4 bg-purple-50 rounded-lg border border-purple-200">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5 mb-1">
