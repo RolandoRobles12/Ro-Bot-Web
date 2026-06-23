@@ -533,6 +533,23 @@ function replaceTemplateVariables(template: string, variables: Record<string, an
 }
 
 // ==========================================================================
+// =                  HELPER: RESOLVE SLACK USER DISPLAY NAME               =
+// ==========================================================================
+
+// Returns the real display name for a Slack user ID (U...). Falls back to
+// the original value if lookup fails or the value is not a user ID.
+async function resolveSlackDisplayName(slackClient: WebClient, value: string): Promise<string> {
+  if (!/^[UW][A-Z0-9]{6,}$/.test(value)) return value;
+  try {
+    const info = await slackClient.users.info({ user: value });
+    const profile = (info.user as any)?.profile;
+    return profile?.display_name || profile?.real_name || value;
+  } catch {
+    return value;
+  }
+}
+
+// ==========================================================================
 // =                    HELPER: UPLOAD ATTACHMENT TO SLACK                  =
 // ==========================================================================
 
@@ -651,11 +668,16 @@ export const sendSlackMessage = functions.https.onCall(
             }
           }
 
-          results.push({ recipient, success: true, result, attachmentError });
+          const resolvedName = await resolveSlackDisplayName(slackClient, recipient.name);
+          const resolvedRecipient = resolvedName !== recipient.name
+            ? { ...recipient, name: resolvedName }
+            : recipient;
+
+          results.push({ recipient: resolvedRecipient, success: true, result, attachmentError });
 
           const historyBase = {
             workspaceId, content,
-            recipients: [recipient], sender,
+            recipients: [resolvedRecipient], sender,
             sentAt: admin.firestore.Timestamp.now(),
             sentBy: context.auth?.uid || 'system',
             ...(scheduledMessageId !== undefined && { scheduledMessageId }),
@@ -665,11 +687,15 @@ export const sendSlackMessage = functions.https.onCall(
           await db.collection('message_history').add({ ...historyBase, status: 'sent', slackResponse: result });
         } catch (error: any) {
           console.error('Error sending to recipient:', error);
-          results.push({ recipient, success: false, error: error.message });
+          const resolvedName = await resolveSlackDisplayName(slackClient, recipient.name);
+          const resolvedRecipient = resolvedName !== recipient.name
+            ? { ...recipient, name: resolvedName }
+            : recipient;
+          results.push({ recipient: resolvedRecipient, success: false, error: error.message });
 
           const historyBase = {
             workspaceId, content,
-            recipients: [recipient], sender,
+            recipients: [resolvedRecipient], sender,
             sentAt: admin.firestore.Timestamp.now(),
             sentBy: context.auth?.uid || 'system',
             ...(scheduledMessageId !== undefined && { scheduledMessageId }),
@@ -828,13 +854,18 @@ export const processScheduledMessages = functions.pubsub
               await slackClient.chat.postMessage(messagePayload);
             }
 
+            const resolvedName = await resolveSlackDisplayName(slackClient, recipient.name);
+            const resolvedRecipient = resolvedName !== recipient.name
+              ? { ...recipient, name: resolvedName }
+              : recipient;
+
             await db.collection('message_history').add({
               workspaceId: message.workspaceId,
               scheduledMessageId: messageDoc.id,
               templateId: message.templateId,
               content: message.content,
               blocks: message.blocks,
-              recipients: [recipient],
+              recipients: [resolvedRecipient],
               sender: message.sender,
               sentAt: admin.firestore.Timestamp.now(),
               sentBy: message.createdBy,
@@ -1373,9 +1404,11 @@ async function executeCampaign(
         channel: recipient.slackChannel,
         text: displayMessage,
       });
-      if (campaign.attachments && campaign.attachments.length > 0) {
+      const effectiveAttachments =
+        scheduleSlot.attachments?.length > 0 ? scheduleSlot.attachments : campaign.attachments;
+      if (effectiveAttachments && effectiveAttachments.length > 0) {
         const resolvedChannelId = (msgResult.channel as string) || recipient.slackChannel;
-        await uploadAttachmentsToSlack(token, resolvedChannelId, campaign.attachments);
+        await uploadAttachmentsToSlack(token, resolvedChannelId, effectiveAttachments);
       }
 
       executionDetails.push({
