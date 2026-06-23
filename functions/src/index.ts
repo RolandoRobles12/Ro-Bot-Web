@@ -3070,3 +3070,581 @@ export const rateAgentConversation = functions.https.onCall(
     return { success: true };
   }
 );
+
+// ==========================================================================
+// =                    AGENT STREAM (SSE streaming version)                 =
+// ==========================================================================
+
+export const agentStream = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+
+  const idToken = ((req.headers.authorization as string) || '').replace('Bearer ', '');
+  if (!idToken) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  try { await admin.auth().verifyIdToken(idToken); }
+  catch { res.status(401).json({ error: 'Invalid token' }); return; }
+
+  const { messages, workspaceId, confirming = false } = req.body as {
+    messages: { role: string; content: string }[];
+    workspaceId: string;
+    confirming?: boolean;
+  };
+  if (!workspaceId) { res.status(400).json({ error: 'workspaceId requerido' }); return; }
+
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+
+  const send = (data: object) => { if (!res.destroyed) res.write(`data: ${JSON.stringify(data)}\n\n`); };
+
+  try {
+    const [settingsSnap, pipelinesSnap, dataSourcesSnap, campaignsSnap, hubspotPropsSnap, customPropsSnap, usersSnap, memoriesSnap] = await Promise.all([
+      db.collection('workspace_settings').where('workspaceId', '==', workspaceId).limit(1).get(),
+      db.collection('pipelines').where('workspaceId', '==', workspaceId).get(),
+      db.collection('data_sources').where('workspaceId', '==', workspaceId).get(),
+      db.collection('campaigns').where('workspaceId', '==', workspaceId).get(),
+      db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).get(),
+      db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
+      getExternalDb().collection('sales_users').where('workspaceId', '==', workspaceId).get().then(async (s: any) =>
+        s.empty ? getExternalDb().collection('sales_users').limit(200).get() : s
+      ),
+      db.collection('agent_memory').where('workspaceId', '==', workspaceId).limit(20).get(),
+    ]);
+
+    let apiKey = '';
+    if (!settingsSnap.empty) apiKey = settingsSnap.docs[0].data().openaiApiKey || '';
+    if (!apiKey) apiKey = functions.config().openai?.api_key || '';
+    if (!apiKey) throw new Error('OpenAI API key no configurada. Agrégala en Configuración > Integraciones.');
+
+    const pipelineContext = pipelinesSnap.docs.map((d: any) => {
+      const p = d.data();
+      const stages = (p.stages || []).map((s: any) =>
+        `    · "${s.name}"  id=${s.id}  →  variable: {{${toSlug(s.name)}}}`
+      ).join('\n');
+      return `  • Pipeline "${p.name}"  (id: ${d.id})\n${stages || '    (sin etapas)'}`;
+    }).join('\n\n') || '  (no hay pipelines configurados)';
+
+    const dataSourceContext = dataSourcesSnap.docs.length > 0
+      ? dataSourcesSnap.docs.map((d: any) => {
+          const ds = d.data();
+          const vars = (ds.variables || []).map((v: any) => `{{${v.key}}}`).join(', ');
+          return `  • "${ds.name}"  id=${d.id}  vars: ${vars}`;
+        }).join('\n')
+      : '  (ninguna todavía)';
+
+    const campaignContext = campaignsSnap.docs.length > 0
+      ? campaignsSnap.docs.map((d: any) => {
+          const c = d.data();
+          const slots = (c.scheduleSlots || []).map((s: any) => `${s.time}`).join(', ');
+          return `  • "${c.name}"  id=${d.id}  activa=${c.isActive}  horarios=[${slots}]`;
+        }).join('\n')
+      : '  (ninguna todavía)';
+
+    const allPropsLines: string[] = [];
+    hubspotPropsSnap.docs.forEach((d: any) => {
+      const p = d.data();
+      if (p.isActive === false) return;
+      const opts = p.type === 'enum' && p.enumOptions?.length
+        ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
+        : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  tipo=${p.type}${opts}`);
+    });
+    customPropsSnap.docs.forEach((d: any) => {
+      const p = d.data();
+      allPropsLines.push(`  • nombre_interno="${p.name}"  tipo=${p.type}`);
+    });
+    const propertiesContext = allPropsLines.length > 0 ? allPropsLines.join('\n') : '  (ninguna configurada)';
+
+    const usersContext = usersSnap.docs.length > 0
+      ? usersSnap.docs.map((d: any) => {
+          const u = d.data();
+          return `  • "${u.nombre || u.name || d.id}"  tipo=${u.tipo || u.type || '?'}  id=${d.id}`;
+        }).join('\n')
+      : '  (no se encontraron usuarios)';
+
+    const sortedMemories = memoriesSnap.docs
+      .map((d: any) => ({ ...d.data(), _id: d.id }))
+      .sort((a: any, b: any) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+      .slice(0, 6);
+    const memoryContext = sortedMemories.length > 0
+      ? '\n\n## Ejemplos anteriores exitosos\n' +
+        sortedMemories.map((m: any) => `  • Solicitud: "${m.userRequest}"\n    Resultado: ${JSON.stringify(m.created)}`).join('\n')
+      : '';
+
+    const systemPrompt = `Eres el asistente del Constructor IA de Ro-Bot, plataforma que automatiza mensajes de Slack con datos de HubSpot CRM.
+
+## Tu rol
+Ayudar a crear, editar y gestionar Fuentes de Datos, Campañas y Plantillas mediante conversación natural.
+NUNCA crees ni edites nada sin antes llamar a showPlan y recibir confirmación.
+Cuando el usuario confirme, procede a ejecutar.
+
+## Capacidades
+
+### DataSource (Fuente de Datos)
+- Conecta un pipeline HubSpot, trackea etapas
+- Variables: {{solicitudes}} siempre + {{slug_etapa}} por etapa
+- filterByOwner: true = solo deals del vendedor destinatario
+- dateRange: "today" | "current_week" | "current_month"
+
+### Campaign (Campaña)
+- Se crea como BORRADOR — el usuario la activa manualmente
+- messageTemplate con {{variables}}, siempre disponible: {{nombre}}
+- scheduleSlots: días semana (0=Dom 1=Lun ... 6=Sáb) + hora HH:mm, zona America/Mexico_City
+- recipientType: "sales_user_type" (kiosco|atn|ba|alianza) | "channel"
+- Puedes EDITAR campañas existentes con updateCampaign
+
+### Template (Plantilla)
+- Mensaje reutilizable para envíos manuales
+- Solo necesita nombre y contenido
+
+## Estado actual del workspace
+
+### Pipelines
+${pipelineContext}
+
+### Fuentes de datos
+${dataSourceContext}
+
+### Campañas existentes
+${campaignContext}
+
+### Propiedades HubSpot
+${propertiesContext}
+
+### Vendedores
+${usersContext}
+${memoryContext}
+
+## Flujo obligatorio
+1. Entiende la solicitud. Si es editar, identifica el ID de la campaña (usa listCampaigns si necesitas).
+2. Si faltan IDs exactos, usa listPipelines / listUsers / listDataSources.
+3. Llama a showPlan → espera confirmación.
+4. Tras confirmación: ejecuta las herramientas correspondientes.
+5. Confirma lo hecho con resumen breve.
+
+Responde siempre en español. Sé directo, conciso y amigable.`;
+
+    const tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'listPipelines',
+          description: 'Lista los pipelines de HubSpot con etapas e IDs exactos',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listDataSources',
+          description: 'Lista las fuentes de datos existentes con sus variables',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listCampaigns',
+          description: 'Lista todas las campañas del workspace con sus IDs, nombres y estado activo',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listProperties',
+          description: 'Lista propiedades HubSpot disponibles para filtros de DataSource',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'listUsers',
+          description: 'Lista vendedores del workspace con nombre, tipo e id. Usar cuando el usuario mencione a alguien por nombre.',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'showPlan',
+          description: 'Muestra el plan al usuario ANTES de crear o editar nada. SIEMPRE llamar primero.',
+          parameters: {
+            type: 'object',
+            properties: {
+              summary: { type: 'string', description: 'Resumen en lenguaje natural de qué se va a hacer y por qué' },
+              dataSource: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  pipelineName: { type: 'string' },
+                  pipelineId: { type: 'string' },
+                  stageIds: { type: 'array', items: { type: 'string' } },
+                  stageNames: { type: 'array', items: { type: 'string' } },
+                  filterByOwner: { type: 'boolean' },
+                  dateRange: { type: 'string', enum: ['today', 'current_week', 'current_month'] },
+                },
+                required: ['name', 'pipelineName', 'pipelineId', 'filterByOwner', 'dateRange'],
+              },
+              campaign: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  messageTemplate: { type: 'string' },
+                  schedules: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        daysOfWeek: { type: 'array', items: { type: 'number' } },
+                        time: { type: 'string' },
+                        label: { type: 'string' },
+                      },
+                    },
+                  },
+                  recipientType: { type: 'string' },
+                  salesUserTypes: { type: 'array', items: { type: 'string' } },
+                },
+                required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
+              },
+              update: {
+                type: 'object',
+                description: 'Para ediciones de campañas existentes',
+                properties: {
+                  campaignName: { type: 'string', description: 'Nombre actual de la campaña a editar' },
+                  changes: { type: 'string', description: 'Descripción de los cambios en lenguaje natural' },
+                },
+              },
+              template: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  content: { type: 'string' },
+                },
+              },
+            },
+            required: ['summary'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'createDataSource',
+          description: 'Crea la fuente de datos. Solo llamar DESPUÉS de confirmación.',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              pipelineId: { type: 'string' },
+              stageIds: { type: 'array', items: { type: 'string' } },
+              filterByOwner: { type: 'boolean' },
+              dateRange: { type: 'string', enum: ['today', 'current_week', 'current_month'] },
+            },
+            required: ['name', 'pipelineId'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'createCampaign',
+          description: 'Crea la campaña. Solo llamar DESPUÉS de confirmación.',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              messageTemplate: { type: 'string' },
+              schedules: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    daysOfWeek: { type: 'array', items: { type: 'number' } },
+                    time: { type: 'string' },
+                    label: { type: 'string' },
+                  },
+                  required: ['daysOfWeek', 'time'],
+                },
+              },
+              recipientType: { type: 'string', enum: ['sales_user_type', 'channel'] },
+              salesUserTypes: { type: 'array', items: { type: 'string' } },
+              dataSourceId: { type: 'string' },
+            },
+            required: ['name', 'messageTemplate', 'schedules', 'recipientType'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'updateCampaign',
+          description: 'Edita una campaña existente. Solo llamar DESPUÉS de confirmación.',
+          parameters: {
+            type: 'object',
+            properties: {
+              campaignId: { type: 'string', description: 'ID Firestore de la campaña a editar' },
+              name: { type: 'string' },
+              messageTemplate: { type: 'string', description: 'Nuevo contenido del mensaje principal' },
+              schedules: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    daysOfWeek: { type: 'array', items: { type: 'number' } },
+                    time: { type: 'string' },
+                    label: { type: 'string' },
+                  },
+                  required: ['daysOfWeek', 'time'],
+                },
+              },
+              isActive: { type: 'boolean' },
+            },
+            required: ['campaignId'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'createTemplate',
+          description: 'Crea una plantilla de mensaje reutilizable.',
+          parameters: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              content: { type: 'string', description: 'Contenido del mensaje, puede incluir {{variables}}' },
+            },
+            required: ['name', 'content'],
+          },
+        },
+      },
+    ];
+
+    async function executeTool(name: string, args: any): Promise<any> {
+      if (name === 'listPipelines') {
+        const snap = await db.collection('pipelines').where('workspaceId', '==', workspaceId).get();
+        return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      }
+      if (name === 'listDataSources') {
+        const snap = await db.collection('data_sources').where('workspaceId', '==', workspaceId).get();
+        return snap.docs.map((d: any) => ({ id: d.id, name: d.data().name, variables: d.data().variables }));
+      }
+      if (name === 'listCampaigns') {
+        const snap = await db.collection('campaigns').where('workspaceId', '==', workspaceId).get();
+        return snap.docs.map((d: any) => {
+          const c = d.data();
+          return { id: d.id, name: c.name, isActive: c.isActive, executionCount: c.executionCount || 0 };
+        });
+      }
+      if (name === 'listProperties') {
+        const [hp, cp] = await Promise.all([
+          db.collection('hubspot_properties').where('workspaceId', '==', workspaceId).get(),
+          db.collection('custom_properties').where('workspaceId', '==', workspaceId).get(),
+        ]);
+        return {
+          hubspotProperties: hp.docs.filter((d: any) => d.data().isActive !== false)
+            .map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type, enumOptions: d.data().enumOptions })),
+          customProperties: cp.docs.map((d: any) => ({ name: d.data().name, label: d.data().label, type: d.data().type })),
+        };
+      }
+      if (name === 'listUsers') {
+        const extDb = getExternalDb();
+        let snap = await extDb.collection('sales_users').where('workspaceId', '==', workspaceId).get();
+        if (snap.empty) snap = await extDb.collection('sales_users').limit(200).get();
+        return snap.docs.map((d: any) => {
+          const u = d.data();
+          return { id: d.id, nombre: u.nombre || u.name || d.id, tipo: u.tipo || u.type || null, email: u.email || null };
+        });
+      }
+      if (name === 'createDataSource') {
+        const { name: dsName, pipelineId, stageIds, filterByOwner = true, dateRange = 'today' } = args;
+        const pipelineSnap = await db.collection('pipelines').doc(pipelineId).get();
+        const pipeline = pipelineSnap.data();
+        const allStages: any[] = pipeline?.stages || [];
+        const selectedStages = stageIds?.length > 0 ? allStages.filter((s: any) => stageIds.includes(s.id)) : allStages;
+        const variables = [
+          { key: 'solicitudes', label: 'Total solicitudes del período', type: 'number' },
+          ...selectedStages.map((s: any) => ({ key: toSlug(s.name), label: s.name, type: 'number' })),
+        ];
+        const docRef = await db.collection('data_sources').add({
+          workspaceId, name: dsName, type: 'pipeline', pipelineId,
+          stageIds: stageIds || [], filterByOwner, dateRange, variables, isActive: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { id: docRef.id, name: dsName, availableVariables: variables.map((v: any) => `{{${v.key}}}`) };
+      }
+      if (name === 'createCampaign') {
+        const { name: campName, messageTemplate, schedules, recipientType, salesUserTypes, dataSourceId } = args;
+        const scheduleSlots = schedules.map((s: any, i: number) => ({
+          id: `slot_${i}`, daysOfWeek: s.daysOfWeek, time: s.time,
+          timezone: 'America/Mexico_City', label: s.label || `Horario ${i + 1}`,
+        }));
+        const recipientConfig: any = { sourceType: recipientType };
+        if (recipientType === 'sales_user_type') {
+          recipientConfig.salesUserTypes = salesUserTypes?.length > 0 ? salesUserTypes : ['kiosco', 'atn', 'ba', 'alianza'];
+        }
+        const dataConfig = dataSourceId ? {
+          fetchSolicitudes: false, fetchVentasAvanzadas: false, fetchVentasReales: false,
+          fetchVideollamadas: false, calculatePerformanceCategory: false, dateRange: 'today',
+          dataSources: [{ dataSourceId }],
+        } : undefined;
+        const docRef = await db.collection('campaigns').add({
+          workspaceId, name: campName, campaignType: 'standard', scheduleSlots, recipientConfig,
+          messageVariants: [{ id: 'variant_1', label: 'Mensaje principal', conditionType: 'always', messageTemplate, priority: 1 }],
+          mentionUser: true, isActive: false, executionCount: 0,
+          ...(dataConfig && { dataConfig }),
+          createdBy: 'agent',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { id: docRef.id, name: campName };
+      }
+      if (name === 'updateCampaign') {
+        const { campaignId, name: newName, messageTemplate, schedules, isActive } = args;
+        const updates: Record<string, any> = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        if (newName !== undefined) updates.name = newName;
+        if (isActive !== undefined) updates.isActive = isActive;
+        if (schedules !== undefined) {
+          updates.scheduleSlots = schedules.map((s: any, i: number) => ({
+            id: `slot_${i}`, daysOfWeek: s.daysOfWeek, time: s.time,
+            timezone: 'America/Mexico_City', label: s.label || `Horario ${i + 1}`,
+          }));
+        }
+        if (messageTemplate !== undefined) {
+          const snap = await db.collection('campaigns').doc(campaignId).get();
+          const campaign = snap.data();
+          const variants = (campaign?.messageVariants || []).map((v: any) =>
+            v.conditionType === 'always' ? { ...v, messageTemplate } : v
+          );
+          updates.messageVariants = variants;
+        }
+        await db.collection('campaigns').doc(campaignId).update(updates);
+        const updated = (await db.collection('campaigns').doc(campaignId).get()).data();
+        return { id: campaignId, name: updated?.name || campaignId };
+      }
+      if (name === 'createTemplate') {
+        const { name: tplName, content } = args;
+        const docRef = await db.collection('templates').add({
+          workspaceId, name: tplName, content, isActive: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { id: docRef.id, name: tplName };
+      }
+      throw new Error(`Herramienta desconocida: ${name}`);
+    }
+
+    const openaiMessages: any[] = [{ role: 'system', content: systemPrompt }, ...messages];
+    const created: Record<string, any> = {};
+    let pendingPlan: any = null;
+
+    for (let round = 0; round < 12; round++) {
+      if (res.destroyed) break;
+
+      const openaiRes = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        { model: 'gpt-4o', messages: openaiMessages, tools, tool_choice: 'auto', stream: true },
+        {
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          responseType: 'stream',
+        }
+      );
+
+      let sseBuffer = '';
+      let assistantContent = '';
+      let finishReason = '';
+      const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>();
+
+      for await (const chunk of openaiRes.data) {
+        sseBuffer += (chunk as Buffer).toString();
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+          let parsed: any;
+          try { parsed = JSON.parse(raw); } catch { continue; }
+
+          const delta = parsed.choices?.[0]?.delta;
+          const fr = parsed.choices?.[0]?.finish_reason;
+          if (fr) finishReason = fr;
+
+          if (delta?.content) {
+            assistantContent += delta.content;
+            send({ type: 'token', content: delta.content });
+          }
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const existing = toolCallsMap.get(tc.index) ?? { id: '', name: '', arguments: '' };
+              if (tc.id) existing.id = tc.id;
+              if (tc.function?.name) existing.name += tc.function.name;
+              if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+              toolCallsMap.set(tc.index, existing);
+            }
+          }
+        }
+      }
+
+      const assistantMsg: any = { role: 'assistant', content: assistantContent || null };
+      if (toolCallsMap.size > 0) {
+        assistantMsg.tool_calls = Array.from(toolCallsMap.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([_, tc]) => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: tc.arguments },
+          }));
+      }
+      openaiMessages.push(assistantMsg);
+
+      if (finishReason !== 'tool_calls') break;
+
+      const toolResults: any[] = [];
+      for (const [_, tc] of toolCallsMap) {
+        const toolName = tc.name;
+        let toolArgs: any;
+        try { toolArgs = JSON.parse(tc.arguments); } catch { toolArgs = {}; }
+
+        send({ type: 'tool_call', name: toolName });
+
+        if (toolName === 'showPlan') {
+          pendingPlan = toolArgs;
+          toolResults.push({
+            role: 'tool', tool_call_id: tc.id,
+            content: JSON.stringify({ status: 'plan_displayed', instruction: 'Plan mostrado. Espera confirmación.' }),
+          });
+        } else {
+          try {
+            const result = await executeTool(toolName, toolArgs);
+            if (toolName === 'createDataSource') created.dataSource = result;
+            if (toolName === 'createCampaign') created.campaign = result;
+            if (toolName === 'createTemplate') created.template = result;
+            if (toolName === 'updateCampaign') created.updatedCampaign = result;
+            toolResults.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
+          } catch (err: any) {
+            toolResults.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify({ error: err.message }) });
+          }
+        }
+      }
+      openaiMessages.push(...toolResults);
+
+      if (pendingPlan && !confirming) break;
+    }
+
+    send({ type: 'done', plan: pendingPlan || undefined, created: Object.keys(created).length > 0 ? created : undefined });
+  } catch (err: any) {
+    send({ type: 'error', message: err.message });
+  }
+
+  res.end();
+});
