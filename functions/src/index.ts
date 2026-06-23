@@ -2164,8 +2164,10 @@ function buildTemplateVariables(
   result.ventas_avanzadas = metrics.ventas_avanzadas ?? 0;
   result.pct_ventas_avanzadas = metrics.pct_ventas_avanzadas ?? 0;
   result.categoria = categoryLabels[catName] || 'En linea';
-  result.dias_restantes = metrics.dias_restantes ?? 0;
-  result.progreso_esperado = metrics.progreso_esperado ?? 0;
+  // Always compute from date — no data source needed
+  const _dow = new Date().getDay();
+  result.dias_restantes = metrics.dias_restantes ?? (_dow === 0 ? 0 : 6 - _dow);
+  result.progreso_esperado = metrics.progreso_esperado ?? calcularProgresoEsperado();
   result.videollamadas_dia = metrics.videollamadas_dia ?? 0;
   result.videollamadas_semana = metrics.videollamadas_semana ?? 0;
 
