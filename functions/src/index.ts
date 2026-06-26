@@ -2164,8 +2164,10 @@ function buildTemplateVariables(
   result.ventas_avanzadas = metrics.ventas_avanzadas ?? 0;
   result.pct_ventas_avanzadas = metrics.pct_ventas_avanzadas ?? 0;
   result.categoria = categoryLabels[catName] || 'En linea';
-  result.dias_restantes = metrics.dias_restantes ?? 0;
-  result.progreso_esperado = metrics.progreso_esperado ?? 0;
+  // Always compute from date — no data source needed
+  const _dow = new Date().getDay();
+  result.dias_restantes = metrics.dias_restantes ?? (_dow === 0 ? 0 : 6 - _dow);
+  result.progreso_esperado = metrics.progreso_esperado ?? calcularProgresoEsperado();
   result.videollamadas_dia = metrics.videollamadas_dia ?? 0;
   result.videollamadas_semana = metrics.videollamadas_semana ?? 0;
 
@@ -2625,14 +2627,16 @@ export const agentBuildCampaign = functions.https.onCall(
       const opts = p.type === 'enum' && p.enumOptions?.length
         ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
         : '';
-      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}${opts}`);
+      const desc0 = p.description ? `  descripción="${p.description}"` : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}${desc0}${opts}`);
     });
     customPropsSnap.docs.forEach((d: any) => {
       const p = d.data();
       const opts = p.type === 'enum' && p.enumOptions?.length
         ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
         : '';
-      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}${opts}`);
+      const desc1 = p.description ? `  descripción="${p.description}"` : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label}"  tipo=${p.type}${desc1}${opts}`);
     });
     const propertiesContext = allPropsLines.length > 0 ? allPropsLines.join('\n') : '  (ninguna configurada)';
 
@@ -2697,9 +2701,10 @@ ${pipelineContext}
 ### Fuentes de datos existentes
 ${dataSourceContext}
 
-### Propiedades de HubSpot disponibles para filtros
-IMPORTANTE: Usa nombre_interno al crear filtros, no la etiqueta.
-Para filtros de fecha (tipo=date): el valor va en formato YYYY-MM-DD, el sistema lo convierte a ISO automáticamente.
+### Propiedades de HubSpot (solo para FILTROS en fuentes de datos, NO son variables de mensaje)
+IMPORTANTE: Estas propiedades se usan únicamente para filtrar deals. No uses su nombre_interno como {{variable}} en mensajes.
+Usa nombre_interno al crear filtros, no la etiqueta.
+Para filtros de fecha (tipo=date): el valor va en formato YYYY-MM-DD.
 Para filtros de enum: usa el valor exacto de las opciones listadas abajo.
 ${propertiesContext}
 
@@ -3148,11 +3153,13 @@ export const agentStream = functions.https.onRequest(async (req, res) => {
       const opts = p.type === 'enum' && p.enumOptions?.length
         ? `  opciones: [${(p.enumOptions as any[]).map((o: any) => typeof o === 'string' ? o : `"${o.value}" (${o.label})`).join(', ')}]`
         : '';
-      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label || p.name}"  tipo=${p.type}${opts}`);
+      const desc = p.description ? `  descripción="${p.description}"` : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label || p.name}"  tipo=${p.type}${desc}${opts}`);
     });
     customPropsSnap.docs.forEach((d: any) => {
       const p = d.data();
-      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label || p.name}"  tipo=${p.type}`);
+      const desc = p.description ? `  descripción="${p.description}"` : '';
+      allPropsLines.push(`  • nombre_interno="${p.name}"  etiqueta="${p.label || p.name}"  tipo=${p.type}${desc}`);
     });
     const propertiesContext = allPropsLines.length > 0 ? allPropsLines.join('\n') : '  (ninguna configurada)';
 
@@ -3189,7 +3196,10 @@ Cuando el usuario confirme, procede a ejecutar.
 
 ### Campaign (Campaña)
 - Se crea como BORRADOR — el usuario la activa manualmente
-- messageTemplate con {{variables}}, siempre disponible: {{nombre}}
+- messageTemplate usa {{variables}} — SOLO puedes usar variables que existan en la fuente de datos vinculada
+- Variables SIEMPRE disponibles (sin fuente de datos): {{nombre}}, {{tipo_usuario}}, {{dias_restantes}}, {{progreso_esperado}}
+- Variables adicionales vienen de la fuente de datos — usa listDataSources para ver qué variables expone cada una
+- NUNCA inventes variables que no estén listadas: si la fuente no las tiene, no las uses
 - scheduleSlots: días semana (0=Dom 1=Lun ... 6=Sáb) + hora HH:mm, zona America/Mexico_City
 - recipientType: "sales_user_type" (kiosco|atn|ba|alianza) | "channel"
 - Puedes EDITAR campañas existentes con updateCampaign
@@ -3209,7 +3219,9 @@ ${dataSourceContext}
 ### Campañas existentes
 ${campaignContext}
 
-### Propiedades HubSpot
+### Propiedades HubSpot (solo para FILTROS en fuentes de datos, NO son variables de mensaje)
+IMPORTANTE: Estas propiedades se usan únicamente para filtrar deals en HubSpot al crear una fuente de datos.
+NO son variables disponibles en el messageTemplate. No uses su nombre_interno como {{variable}}.
 ${propertiesContext}
 
 ### Vendedores
@@ -3218,10 +3230,11 @@ ${memoryContext}
 
 ## Flujo obligatorio
 1. Entiende la solicitud. Si es editar, identifica el ID de la campaña (usa listCampaigns si necesitas).
-2. Si faltan IDs exactos, usa listPipelines / listUsers / listDataSources.
-3. Llama a showPlan → espera confirmación.
-4. Tras confirmación: ejecuta las herramientas correspondientes.
-5. Confirma lo hecho con resumen breve.
+2. Si necesitas crear una campaña con datos, usa listDataSources para ver qué variables ofrece cada fuente.
+3. Si faltan IDs exactos, usa listPipelines / listUsers / listDataSources.
+4. Llama a showPlan → espera confirmación.
+5. Tras confirmación: ejecuta las herramientas correspondientes.
+6. Confirma lo hecho con resumen breve.
 
 Responde siempre en español. Sé directo, conciso y amigable.`;
 
