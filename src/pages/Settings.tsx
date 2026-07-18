@@ -1082,6 +1082,21 @@ export function Settings() {
                 </p>
               </div>
 
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descripción <span className="text-gray-400 font-normal">(para el agente IA)</span>
+                </label>
+                <textarea
+                  value={propForm.description || ''}
+                  onChange={(e) => setPropForm(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Ej: Monto total desembolsado al cliente en este crédito. Valor en pesos MXN."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slack-purple focus:border-transparent text-sm resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">El agente IA usará esto para entender qué significa la propiedad y cuándo usarla en filtros.</p>
+              </div>
+
               {/* Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de dato</label>
